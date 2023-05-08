@@ -1,10 +1,12 @@
+use arviss::decoding::Reg;
+use arviss::platforms::basic::*;
 use libloading::{Library, Symbol};
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::process::Command;
 use tempdir::TempDir;
 
-type BigComplicatedCalculationFunc = extern "C" fn(i64, i64) -> i64;
+type ArvissFunc = extern "C" fn(&mut Rv32iCpu<BasicMem>);
 
 pub fn main() -> Result<(), io::Error> {
     // Open a temporary directory that will be cleaned up at the end.
@@ -18,15 +20,8 @@ pub fn main() -> Result<(), io::Error> {
         "use arviss::decoding::Reg;\n",
         "\n",
         "#[no_mangle]\n",
-        "pub extern \"C\" fn big_complicated_calculation(a: i64, b: i64) -> i64 {\n",
-        "    a + b\n",
-        "}\n",
-        "\n",
-        "#[no_mangle]\n",
         "pub extern \"C\" fn run_one(cpu: &mut Rv32iCpu::<BasicMem>) {\n",
         "    cpu.add(Reg::from(1), Reg::from(2), Reg::from(3));\n",
-        "    cpu.add(Reg::from(2), Reg::from(1), Reg::from(3));\n",
-        "    cpu.add(Reg::from(3), Reg::from(1), Reg::from(2));\n",
         "}\n"
     );
     let file_path = dir.path().join("demo.rs");
@@ -53,16 +48,30 @@ pub fn main() -> Result<(), io::Error> {
         .status()?;
     assert!(run.success());
 
-    
+    // Create a simulator.
+    let mut cpu = Rv32iCpu::<BasicMem>::new();
+    cpu.wx(Reg::from(1), 0);
+    cpu.wx(Reg::from(2), 2);
+    cpu.wx(Reg::from(3), 3);
+
     // Load the library and call a function in it.
     let library_path = dir.path().join("libdemo.so");
-    println!("Look in {:?} for the output", library_path);
+    println!(
+        "Look in {:?} for the generated code and library",
+        dir.path()
+    );
+
+    println!("Before: {}", cpu.rx(Reg::from(1)));
     unsafe {
         let lib = Library::new(library_path).unwrap();
-        let add_func: Symbol<BigComplicatedCalculationFunc> =
-            lib.get(b"big_complicated_calculation").unwrap();
-        println!("big_complicated_calculation(2, 2) = {}", add_func(2, 2));
+
+        // Run the compiled code that we loaded from the DLL against our simulator.
+        let run_one: Symbol<ArvissFunc> = lib.get(b"run_one").unwrap();
+        run_one(&mut cpu);
+        assert_eq!(5, cpu.rx(Reg::from(1)));
     }
+
+    println!(" After: {}", cpu.rx(Reg::from(1)));
 
     // Give the user (me) an opportunity to disassemble the binary.
     let stdin = io::stdin();
