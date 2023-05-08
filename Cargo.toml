@@ -1,0 +1,14 @@
+[package]
+name = "load_dll"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libloading = "0.8"
+tempdir = "0.3"
+arviss = { path = "../arviss_experiment" }
+
+[lib]
+crate-type = ["cdylib"]
