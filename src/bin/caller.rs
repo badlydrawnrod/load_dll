@@ -71,8 +71,8 @@ pub fn main() -> Result<(), io::Error> {
 
     // Load the library.
     let lib = unsafe {
-        let lib = Library::new(library_path).unwrap();
-        lib
+        
+        Library::new(library_path).unwrap()
     };
 
     // Get the function to call, i.e., the compiled code.
