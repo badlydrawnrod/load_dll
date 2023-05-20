@@ -92,8 +92,8 @@ where
 
     fn run(&mut self, addr: Address) {
         self.start_block(addr);
-        while !self.open_blocks.is_empty() {
-            self.current_block = self.open_blocks.pop().unwrap();
+        while let Some(current_block) = self.open_blocks.pop() {
+            self.current_block = current_block;
             let block = self.known_blocks.index(self.current_block);
             self.addr = block.start;
             loop {
@@ -130,7 +130,7 @@ where
     ) -> Self::Item {
         self.end_block(self.addr);
         self.start_block(self.addr + 4);
-        self.start_block((self.addr).wrapping_add(bimm));
+        self.start_block(self.addr.wrapping_add(bimm));
     }
 
     fn bne(
@@ -141,7 +141,7 @@ where
     ) -> Self::Item {
         self.end_block(self.addr);
         self.start_block(self.addr + 4);
-        self.start_block((self.addr).wrapping_add(bimm));
+        self.start_block(self.addr.wrapping_add(bimm));
     }
 
     fn blt(
@@ -152,7 +152,7 @@ where
     ) -> Self::Item {
         self.end_block(self.addr);
         self.start_block(self.addr + 4);
-        self.start_block((self.addr).wrapping_add(bimm));
+        self.start_block(self.addr.wrapping_add(bimm));
     }
 
     fn bge(
@@ -163,7 +163,7 @@ where
     ) -> Self::Item {
         self.end_block(self.addr);
         self.start_block(self.addr + 4);
-        self.start_block((self.addr).wrapping_add(bimm));
+        self.start_block(self.addr.wrapping_add(bimm));
     }
 
     fn bltu(
@@ -174,7 +174,7 @@ where
     ) -> Self::Item {
         self.end_block(self.addr);
         self.start_block(self.addr + 4);
-        self.start_block((self.addr).wrapping_add(bimm));
+        self.start_block(self.addr.wrapping_add(bimm));
     }
 
     fn bgeu(
@@ -185,7 +185,7 @@ where
     ) -> Self::Item {
         self.end_block(self.addr);
         self.start_block(self.addr + 4);
-        self.start_block((self.addr).wrapping_add(bimm));
+        self.start_block(self.addr.wrapping_add(bimm));
     }
 
     fn lb(
@@ -282,9 +282,8 @@ where
         _rs1: arviss::decoding::Reg,
         _iimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
-        // TODO: handle branch ... except that it's indirect so we have no idea.
     }
 
     fn sb(
@@ -316,7 +315,7 @@ where
     fn lui(&mut self, _rd: arviss::decoding::Reg, _uimm: u32) -> Self::Item {}
 
     fn jal(&mut self, _rd: arviss::decoding::Reg, jimm: u32) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
         self.start_block((self.addr).wrapping_add(jimm));
     }
