@@ -7,8 +7,8 @@ use arviss::{disassembler::Disassembler, Address, DispatchRv32i, HandleRv32i, Me
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct Block {
-    start: Address,
-    end: Address,
+    start: Address, // Address of the first instruction in the basic block.
+    end: Address,   // Address of the last instruction in the basic block.
 }
 
 const OPEN_BLOCK_SENTINEL: Address = 0;
@@ -39,10 +39,12 @@ where
     M: Memory,
 {
     pub fn with_mem(mem: M, len: usize) -> Self {
+        let addr = 0;
+        let eom = addr + (len as Address);
         Self {
             addr: 0,
             mem,
-            eom: len as Address, // TODO: this assumes starting at zero - not necessarily the case.
+            eom,
             known_blocks: Vec::new(),
             open_blocks: Vec::new(),
             current_block: 0,
@@ -54,9 +56,7 @@ where
     }
 
     fn next(&mut self) -> MemoryResult<u32> {
-        let result = self.mem.read32(self.addr);
-        // self.addr = self.addr.wrapping_add(4);
-        result
+        self.mem.read32(self.addr)
     }
 
     fn start_block(&mut self, addr: Address) {
@@ -456,8 +456,10 @@ pub fn main() {
     mem.write_bytes(0, image)
         .expect("Failed to initialize memory.");
 
-    // Find the blocks in the image.
-    let mut block_finder = BlockFinder::<BasicMem>::with_mem(mem, buffer.len());
+    // Find the basic blocks in the image.
+    let text_size = buffer.len() - 4; // TODO: The image needs to tell us how big its text and initialized data are.
+
+    let mut block_finder = BlockFinder::<BasicMem>::with_mem(mem, text_size);
     block_finder.run(0);
     assert!(block_finder.open_blocks.is_empty());
 
