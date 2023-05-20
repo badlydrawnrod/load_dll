@@ -12,9 +12,14 @@ struct Block {
     end: Address,
 }
 
+const OPEN_BLOCK_SENTINEL: Address = 0;
+
 impl Block {
     fn new(start: Address) -> Self {
-        Block { start, end: 0 }
+        Block {
+            start,
+            end: OPEN_BLOCK_SENTINEL,
+        }
     }
 }
 
@@ -90,7 +95,7 @@ where
                     "         Original block is now {:08x} - {:08x}",
                     block.start, block.end
                 );
-                println!("              New block is now {:08x} - ????????", addr);
+                println!("              New block is now {:08x} - {:08x}", addr, OPEN_BLOCK_SENTINEL);
             }
         }
     }
@@ -105,8 +110,8 @@ where
         self.start_block(addr);
         while !self.open_blocks.is_empty() {
             self.current_block = self.open_blocks.pop().unwrap();
-            println!("Current block is now {}", self.current_block);
             let block = self.known_blocks.index(self.current_block);
+            println!("Current block is now {} - {:08x} - {:08x}", self.current_block, block.start, block.end);
             self.addr = block.start.wrapping_add(4);
             loop {
                 let addr = self.addr();
@@ -117,7 +122,7 @@ where
                 let ins = self.next().unwrap();
                 self.dispatch(ins);
                 let block = self.known_blocks.index(self.current_block);
-                if block.end != 0 {
+                if block.end != OPEN_BLOCK_SENTINEL {
                     break;
                 }
             }
