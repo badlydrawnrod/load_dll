@@ -51,10 +51,6 @@ where
         }
     }
 
-    fn addr(&self) -> Address {
-        self.addr
-    }
-
     fn next(&mut self) -> MemoryResult<u32> {
         self.mem.read32(self.addr)
     }
@@ -94,20 +90,13 @@ where
         self.start_block(addr);
         while let Some(current_block) = self.open_blocks.pop() {
             self.current_block = current_block;
-            let block = self.known_blocks.index(self.current_block);
+            let mut block = self.known_blocks.index(self.current_block);
             self.addr = block.start;
-            loop {
-                let addr = self.addr();
-                if addr >= self.eom {
-                    break;
-                }
+            while self.addr < self.eom && block.end == OPEN_BLOCK_SENTINEL {
                 let ins = self.next().unwrap();
                 self.dispatch(ins);
-                let block = self.known_blocks.index(self.current_block);
-                if block.end != OPEN_BLOCK_SENTINEL {
-                    break;
-                }
                 self.addr = self.addr.wrapping_add(4);
+                block = self.known_blocks.index(self.current_block);
             }
         }
         self.known_blocks.sort_unstable();
@@ -460,7 +449,6 @@ pub fn main() {
 
     let mut block_finder = BlockFinder::<BasicMem>::with_mem(mem, text_size);
     block_finder.run(0);
-    assert!(block_finder.open_blocks.is_empty());
 
     // Disassemble each block.
     let mut dis = Disassembler;
