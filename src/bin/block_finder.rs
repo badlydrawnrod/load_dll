@@ -56,7 +56,7 @@ where
 
     fn next(&mut self) -> MemoryResult<u32> {
         let result = self.mem.read32(self.addr);
-        self.addr = self.addr.wrapping_add(4);
+        // self.addr = self.addr.wrapping_add(4);
         result
     }
 
@@ -95,7 +95,10 @@ where
                     "         Original block is now {:08x} - {:08x}",
                     block.start, block.end
                 );
-                println!("              New block is now {:08x} - {:08x}", addr, OPEN_BLOCK_SENTINEL);
+                println!(
+                    "              New block is now {:08x} - {:08x}",
+                    addr, OPEN_BLOCK_SENTINEL
+                );
             }
         }
     }
@@ -111,8 +114,12 @@ where
         while !self.open_blocks.is_empty() {
             self.current_block = self.open_blocks.pop().unwrap();
             let block = self.known_blocks.index(self.current_block);
-            println!("Current block is now {} - {:08x} - {:08x}", self.current_block, block.start, block.end);
-            self.addr = block.start.wrapping_add(4);
+            println!(
+                "Current block is now {} - {:08x} - {:08x}",
+                self.current_block, block.start, block.end
+            );
+            // self.addr = block.start.wrapping_add(4);
+            self.addr = block.start;
             loop {
                 let addr = self.addr();
                 if addr >= self.eom {
@@ -125,6 +132,7 @@ where
                 if block.end != OPEN_BLOCK_SENTINEL {
                     break;
                 }
+                self.addr = self.addr.wrapping_add(4);
             }
         }
     }
@@ -147,9 +155,9 @@ where
         bimm: u32,
     ) -> Self::Item {
         println!("beq");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
-        self.start_block((self.addr - 4).wrapping_add(bimm));
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
+        self.start_block((self.addr).wrapping_add(bimm));
     }
 
     fn bne(
@@ -159,9 +167,9 @@ where
         bimm: u32,
     ) -> Self::Item {
         println!("bne");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
-        self.start_block((self.addr - 4).wrapping_add(bimm));
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
+        self.start_block((self.addr).wrapping_add(bimm));
     }
 
     fn blt(
@@ -171,9 +179,9 @@ where
         bimm: u32,
     ) -> Self::Item {
         println!("blt");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
-        self.start_block((self.addr - 4).wrapping_add(bimm));
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
+        self.start_block((self.addr).wrapping_add(bimm));
     }
 
     fn bge(
@@ -183,9 +191,9 @@ where
         bimm: u32,
     ) -> Self::Item {
         println!("bge");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
-        self.start_block((self.addr - 4).wrapping_add(bimm));
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
+        self.start_block((self.addr).wrapping_add(bimm));
     }
 
     fn bltu(
@@ -195,9 +203,9 @@ where
         bimm: u32,
     ) -> Self::Item {
         println!("bltu");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
-        self.start_block((self.addr - 4).wrapping_add(bimm));
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
+        self.start_block((self.addr).wrapping_add(bimm));
     }
 
     fn bgeu(
@@ -207,9 +215,9 @@ where
         bimm: u32,
     ) -> Self::Item {
         println!("bgeu");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
-        self.start_block((self.addr - 4).wrapping_add(bimm));
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
+        self.start_block((self.addr).wrapping_add(bimm));
     }
 
     fn lb(
@@ -307,8 +315,8 @@ where
         _iimm: u32,
     ) -> Self::Item {
         println!("jalr");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
         // TODO: handle branch ... except that it's indirect so we have no idea.
     }
 
@@ -342,9 +350,9 @@ where
 
     fn jal(&mut self, _rd: arviss::decoding::Reg, jimm: u32) -> Self::Item {
         println!("jal");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
-        self.start_block((self.addr - 4).wrapping_add(jimm));
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
+        self.start_block((self.addr).wrapping_add(jimm));
     }
 
     fn add(
@@ -461,14 +469,14 @@ where
 
     fn ecall(&mut self) -> Self::Item {
         println!("ecall");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
     }
 
     fn ebreak(&mut self) -> Self::Item {
         println!("ebreak");
-        self.end_block(self.addr - 4); // TODO: traditional fetch?
-        self.start_block(self.addr);
+        self.end_block(self.addr); // TODO: traditional fetch?
+        self.start_block(self.addr + 4);
     }
 }
 
