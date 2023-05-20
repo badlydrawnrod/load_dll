@@ -62,10 +62,6 @@ where
     fn start_block(&mut self, addr: Address) {
         // Ignore addresses that are outside of the address range.
         if addr >= self.eom {
-            println!(
-                "; not adding block at: {:08x} as it's off the end of the image",
-                addr
-            );
             return;
         }
 
@@ -73,7 +69,6 @@ where
         let is_unknown = self.known_blocks.iter().all(|b| b.start != addr);
         if is_unknown {
             // Start a new block.
-            println!("; starting block at: {:08x}", addr);
             self.known_blocks.push(Block::new(addr));
             let index = self.known_blocks.len() - 1;
             self.open_blocks.push(index);
@@ -85,25 +80,12 @@ where
                 .iter_mut()
                 .find(|b| b.start < addr && addr <= b.end);
             if let Some(block) = splits_block {
-                println!(
-                    "; Block at {:08x} splits block {:08x} - {:08x}",
-                    addr, block.start, block.end
-                );
                 block.end = addr - 4;
-                println!(
-                    ";          Original block is now {:08x} - {:08x}",
-                    block.start, block.end
-                );
-                println!(
-                    ";               New block is now {:08x} - {:08x}",
-                    addr, OPEN_BLOCK_SENTINEL
-                );
             }
         }
     }
 
     fn end_block(&mut self, addr: Address) {
-        println!("; ending block at: {:08x}", addr);
         let block = self.known_blocks.index_mut(self.current_block);
         block.end = addr;
     }
@@ -113,11 +95,6 @@ where
         while !self.open_blocks.is_empty() {
             self.current_block = self.open_blocks.pop().unwrap();
             let block = self.known_blocks.index(self.current_block);
-            println!(
-                "; Current block is now {} - {:08x} - {:08x}",
-                self.current_block, block.start, block.end
-            );
-            // self.addr = block.start.wrapping_add(4);
             self.addr = block.start;
             loop {
                 let addr = self.addr();
@@ -133,6 +110,7 @@ where
                 self.addr = self.addr.wrapping_add(4);
             }
         }
+        self.known_blocks.sort_unstable();
     }
 }
 
@@ -150,7 +128,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
         self.start_block((self.addr).wrapping_add(bimm));
     }
@@ -161,7 +139,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
         self.start_block((self.addr).wrapping_add(bimm));
     }
@@ -172,7 +150,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
         self.start_block((self.addr).wrapping_add(bimm));
     }
@@ -183,7 +161,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
         self.start_block((self.addr).wrapping_add(bimm));
     }
@@ -194,7 +172,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
         self.start_block((self.addr).wrapping_add(bimm));
     }
@@ -205,7 +183,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
         self.start_block((self.addr).wrapping_add(bimm));
     }
@@ -456,12 +434,12 @@ where
     }
 
     fn ecall(&mut self) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
     }
 
     fn ebreak(&mut self) -> Self::Item {
-        self.end_block(self.addr); // TODO: traditional fetch?
+        self.end_block(self.addr);
         self.start_block(self.addr + 4);
     }
 }
@@ -480,18 +458,17 @@ pub fn main() {
 
     // Find the blocks in the image.
     let mut block_finder = BlockFinder::<BasicMem>::with_mem(mem, buffer.len());
-
     block_finder.run(0);
     assert!(block_finder.open_blocks.is_empty());
 
-    println!("; ----------------------------------------------------------------------------------------------------------------------");
-
-    block_finder.known_blocks.sort_unstable();
-
+    // Disassemble each block.
     let mut dis = Disassembler;
     println!("addr     instr    code");
     for block in &block_finder.known_blocks {
-        println!("; Basic block: {:08x} - {:08x}", block.start, block.end);
+        println!(
+            "; --------------- Basic block: {:08x} - {:08x}",
+            block.start, block.end
+        );
         for addr in (block.start..=block.end).step_by(4) {
             let ins = block_finder.mem.read32(addr).unwrap();
             let code = dis.dispatch(ins);
