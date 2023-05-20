@@ -6,7 +6,7 @@ use arviss::{Address, DispatchRv32i, HandleRv32i, MemoryResult};
 
 use arviss::backends::memory::basic::*;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct Block {
     start: Address,
     end: Address,
@@ -483,6 +483,14 @@ pub fn main() {
     let mut block_finder = BlockFinder::<BasicMem>::with_mem(mem, buffer.len());
 
     block_finder.run(0);
+    assert!(block_finder.open_blocks.is_empty());
+
+    println!("------------------------------------------------------------------------------------------------------------------------");
+
+    block_finder.known_blocks.sort_unstable();
+    for block in &block_finder.known_blocks {
+        println!("Block: {:08x} - {:08x}", block.start, block.end);
+    }
 
     // Habemus blocks.
 }
