@@ -6,6 +6,7 @@ use arviss::{Address, DispatchRv32i, HandleRv32i, MemoryResult};
 
 use arviss::backends::memory::basic::*;
 
+#[derive(Clone, Copy, Debug)]
 struct Block {
     start: Address,
     end: Address,
@@ -13,10 +14,7 @@ struct Block {
 
 impl Block {
     fn new(start: Address) -> Self {
-        Block {
-            start,
-            end: 0,
-        }
+        Block { start, end: 0 }
     }
 }
 
@@ -58,6 +56,7 @@ where
     }
 
     fn start_block(&mut self, addr: Address) {
+        // Ignore addresses that are outside of the address range.
         if addr >= self.eom {
             println!(
                 "not adding block at: {:08x} as it's off the end of the image",
@@ -65,13 +64,34 @@ where
             );
             return;
         }
-        let is_known = self.known_blocks.iter().any(|b| b.start == addr);
-        // TODO: what if it splits a known block?
-        if !is_known {
+
+        // Only add previously unknown blocks.
+        let is_unknown = self.known_blocks.iter().all(|b| b.start != addr);
+        if is_unknown {
+            // Start a new block.
             println!("starting block at: {:08x}", addr);
             self.known_blocks.push(Block::new(addr));
             let index = self.known_blocks.len() - 1;
             self.open_blocks.push(index);
+
+            // If the new block splits an existing block then terminate the existing block at the address immediately
+            // before the new block.
+            let splits_block = self
+                .known_blocks
+                .iter_mut()
+                .find(|b| b.start < addr && addr <= b.end);
+            if let Some(block) = splits_block {
+                println!(
+                    "Block at {:08x} splits block {:08x} - {:08x}",
+                    addr, block.start, block.end
+                );
+                block.end = addr - 4;
+                println!(
+                    "         Original block is now {:08x} - {:08x}",
+                    block.start, block.end
+                );
+                println!("              New block is now {:08x} - ????????", addr);
+            }
         }
     }
 
@@ -463,14 +483,6 @@ pub fn main() {
     let mut block_finder = BlockFinder::<BasicMem>::with_mem(mem, buffer.len());
 
     block_finder.run(0);
-    // loop {
-    //     let addr = block_finder.addr();
-    //     let ins = block_finder.next().unwrap();
-    //     print!("0x{:08x} ", addr);
-    //     if addr == 0 {
-    //         println!("START");
-    //         block_finder.start_block(addr); // TODO: traditional fetch?
-    //     }
-    //     block_finder.dispatch(ins);
-    // }
+
+    // Habemus blocks.
 }
