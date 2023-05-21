@@ -3,7 +3,9 @@ use std::io::prelude::*;
 use std::ops::{Index, IndexMut};
 
 use arviss::backends::memory::basic::*;
-use arviss::{disassembler::Disassembler, Address, DispatchRv32i, HandleRv32i, MemoryResult};
+use arviss::{
+    disassembler::Disassembler, Address, DispatchRv32ic, HandleRv32c, HandleRv32i, MemoryResult,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct Block {
@@ -76,7 +78,16 @@ where
                 .iter_mut()
                 .find(|b| b.start < addr && addr <= b.end);
             if let Some(block) = splits_block {
-                block.end = addr - 4;
+                // Scan the block to find the end, as we need to account for variable sized instructions.
+                // TODO: would this be easier with an open range?
+                let mut end: Address = block.start;
+                let mut instruction_size = 0;
+                while end < addr {
+                    let ins = self.mem.read32(end).unwrap(); // TODO: Lose the unwrap and handle the error.
+                    instruction_size = if (ins & 3) == 3 { 4 } else { 2 };
+                    end += instruction_size;
+                }
+                block.end = end - instruction_size;
             }
         }
     }
@@ -93,9 +104,10 @@ where
             let mut block = self.known_blocks.index(self.current_block);
             self.addr = block.start;
             while self.addr < self.eom && block.end == OPEN_BLOCK_SENTINEL {
-                let ins = self.next().unwrap();
+                let ins = self.next().unwrap(); // TODO: Lose the unwrap and handle the error.
                 self.dispatch(ins);
-                self.addr = self.addr.wrapping_add(4);
+                let instruction_size = if (ins & 3) == 3 { 4 } else { 2 };
+                self.addr = self.addr.wrapping_add(instruction_size);
                 block = self.known_blocks.index(self.current_block);
             }
         }
@@ -432,11 +444,128 @@ where
     }
 }
 
+impl<M> HandleRv32c for BlockFinder<M>
+where
+    M: Memory,
+{
+    type Item = ();
+
+    fn c_addi4spn(&mut self, _rdp: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+
+    fn c_lw(
+        &mut self,
+        _rdp: arviss::decoding::Reg,
+        _rs1p: arviss::decoding::Reg,
+        _imm: u32,
+    ) -> Self::Item {
+    }
+
+    fn c_sw(
+        &mut self,
+        _rs1p: arviss::decoding::Reg,
+        _rs2p: arviss::decoding::Reg,
+        _imm: u32,
+    ) -> Self::Item {
+    }
+
+    fn c_sub(
+        &mut self,
+        _rdrs1p: arviss::decoding::Reg,
+        _rs2p: arviss::decoding::Reg,
+    ) -> Self::Item {
+    }
+
+    fn c_xor(
+        &mut self,
+        _rdrs1p: arviss::decoding::Reg,
+        _rs2p: arviss::decoding::Reg,
+    ) -> Self::Item {
+    }
+
+    fn c_or(&mut self, _rdrs1p: arviss::decoding::Reg, _rs2p: arviss::decoding::Reg) -> Self::Item {
+    }
+
+    fn c_and(
+        &mut self,
+        _rdrs1p: arviss::decoding::Reg,
+        _rs2p: arviss::decoding::Reg,
+    ) -> Self::Item {
+    }
+
+    fn c_nop(&mut self, _imm: u32) -> Self::Item {}
+
+    fn c_addi16sp(&mut self, _imm: u32) -> Self::Item {}
+
+    fn c_andi(&mut self, _rsrs1p: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+
+    fn c_addi(&mut self, _rdrs1n0: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+
+    fn c_li(&mut self, _rd: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+
+    fn c_lui(&mut self, _rdn2: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+
+    fn c_j(&mut self, imm: u32) -> Self::Item {
+        self.end_block(self.addr);
+        self.start_block(self.addr + 2);
+        self.start_block((self.addr).wrapping_add(imm));
+    }
+
+    fn c_beqz(&mut self, _rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
+        self.end_block(self.addr);
+        self.start_block(self.addr + 2);
+        self.start_block(self.addr.wrapping_add(imm));
+    }
+
+    fn c_bnez(&mut self, _rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
+        self.end_block(self.addr);
+        self.start_block(self.addr + 2);
+        self.start_block(self.addr.wrapping_add(imm));
+    }
+
+    fn c_jr(&mut self, _rs1n0: arviss::decoding::Reg) -> Self::Item {
+        self.end_block(self.addr);
+        self.start_block(self.addr + 2);
+    }
+
+    fn c_jalr(&mut self, _rs1n0: arviss::decoding::Reg) -> Self::Item {
+        self.end_block(self.addr);
+        self.start_block(self.addr + 2);
+    }
+
+    fn c_ebreak(&mut self) -> Self::Item {
+        self.end_block(self.addr);
+        self.start_block(self.addr + 2);
+    }
+
+    fn c_mv(&mut self, _rd: arviss::decoding::Reg, _rs2n0: arviss::decoding::Reg) -> Self::Item {}
+
+    fn c_add(
+        &mut self,
+        _rdrs1: arviss::decoding::Reg,
+        _rs2n0: arviss::decoding::Reg,
+    ) -> Self::Item {
+    }
+
+    fn c_lwsp(&mut self, _rdn0: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+
+    fn c_swsp(&mut self, _rs2: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+
+    fn c_jal(&mut self, _imm: u32) -> Self::Item {
+        todo!()
+    }
+
+    fn c_srli(&mut self, _rdrs1p: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+
+    fn c_srai(&mut self, _rdrs1p: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+
+    fn c_slli(&mut self, _rdrs1n0: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
+}
+
 pub fn main() {
     // Load the image into a buffer.
-    let mut f = File::open("images/hello_world.rv32i").expect("Failed to open image.");
+    let mut f = File::open("images/hello_world.rv32ic").expect("Failed to open image."); // TODO: Lose the expect and handle the error.
     let mut buffer = Vec::new();
-    f.read_to_end(&mut buffer).expect("Failed to load image.");
+    f.read_to_end(&mut buffer).expect("Failed to load image."); // TODO: Lose the expect and handle the error.
 
     // Copy the image into memory.
     let mut mem = BasicMem::new();
@@ -458,10 +587,20 @@ pub fn main() {
             "; --------------- Basic block: {:08x} - {:08x}",
             block.start, block.end
         );
-        for addr in (block.start..=block.end).step_by(4) {
-            let ins = block_finder.mem.read32(addr).unwrap();
+        let mut addr = block.start;
+        while addr <= block.end {
+            let ins = block_finder.mem.read32(addr).unwrap(); // TODO: lose the unwrap and handle the error.
             let code = dis.dispatch(ins);
-            println!("{:08x} {:08x} {}", addr, ins, code);
+            let is_compact = (ins & 3) != 3;
+            if is_compact {
+                // Compact instructions are 2 bytes each.
+                println!("{:08x}     {:04x} {}", addr, ins & 0xffff, code);
+                addr += 2;
+            } else {
+                // Regular instructions are 4 bytes each.
+                println!("{:08x} {:08x} {}", addr, ins, code);
+                addr += 4;
+            }
         }
     }
 }
