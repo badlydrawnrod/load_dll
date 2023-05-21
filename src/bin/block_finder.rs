@@ -10,7 +10,7 @@ use arviss::{
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct Block {
     start: Address, // Address of the first instruction in the basic block.
-    end: Address,   // Address of the last instruction in the basic block.
+    end: Address,   // Address of the instruction following the last instruction in the basic block.
 }
 
 const OPEN_BLOCK_SENTINEL: Address = 0;
@@ -76,18 +76,9 @@ where
             let splits_block = self
                 .known_blocks
                 .iter_mut()
-                .find(|b| b.start < addr && addr <= b.end);
+                .find(|b| b.start < addr && addr < b.end);
             if let Some(block) = splits_block {
-                // Scan the block to find the end, as we need to account for variable sized instructions.
-                // TODO: would this be easier with an open range?
-                let mut end: Address = block.start;
-                let mut instruction_size = 0;
-                while end < addr {
-                    let ins = self.mem.read32(end).unwrap(); // TODO: Lose the unwrap and handle the error.
-                    instruction_size = if (ins & 3) == 3 { 4 } else { 2 };
-                    end += instruction_size;
-                }
-                block.end = end - instruction_size;
+                block.end = addr;
             }
         }
     }
@@ -129,7 +120,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
         self.start_block(self.addr.wrapping_add(bimm));
     }
@@ -140,7 +131,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
         self.start_block(self.addr.wrapping_add(bimm));
     }
@@ -151,7 +142,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
         self.start_block(self.addr.wrapping_add(bimm));
     }
@@ -162,7 +153,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
         self.start_block(self.addr.wrapping_add(bimm));
     }
@@ -173,7 +164,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
         self.start_block(self.addr.wrapping_add(bimm));
     }
@@ -184,7 +175,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
         self.start_block(self.addr.wrapping_add(bimm));
     }
@@ -283,7 +274,7 @@ where
         _rs1: arviss::decoding::Reg,
         _iimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
     }
 
@@ -316,7 +307,7 @@ where
     fn lui(&mut self, _rd: arviss::decoding::Reg, _uimm: u32) -> Self::Item {}
 
     fn jal(&mut self, _rd: arviss::decoding::Reg, jimm: u32) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
         self.start_block((self.addr).wrapping_add(jimm));
     }
@@ -434,12 +425,12 @@ where
     }
 
     fn ecall(&mut self) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
     }
 
     fn ebreak(&mut self) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 4);
         self.start_block(self.addr + 4);
     }
 }
@@ -505,35 +496,35 @@ where
     fn c_lui(&mut self, _rdn2: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
 
     fn c_j(&mut self, imm: u32) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 2);
         self.start_block(self.addr + 2);
         self.start_block((self.addr).wrapping_add(imm));
     }
 
     fn c_beqz(&mut self, _rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 2);
         self.start_block(self.addr + 2);
         self.start_block(self.addr.wrapping_add(imm));
     }
 
     fn c_bnez(&mut self, _rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 2);
         self.start_block(self.addr + 2);
         self.start_block(self.addr.wrapping_add(imm));
     }
 
     fn c_jr(&mut self, _rs1n0: arviss::decoding::Reg) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 2);
         self.start_block(self.addr + 2);
     }
 
     fn c_jalr(&mut self, _rs1n0: arviss::decoding::Reg) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 2);
         self.start_block(self.addr + 2);
     }
 
     fn c_ebreak(&mut self) -> Self::Item {
-        self.end_block(self.addr);
+        self.end_block(self.addr + 2);
         self.start_block(self.addr + 2);
     }
 
@@ -588,7 +579,7 @@ pub fn main() {
             block.start, block.end
         );
         let mut addr = block.start;
-        while addr <= block.end {
+        while addr < block.end {
             let ins = block_finder.mem.read32(addr).unwrap(); // TODO: lose the unwrap and handle the error.
             let code = dis.dispatch(ins);
             let is_compact = (ins & 3) != 3;
