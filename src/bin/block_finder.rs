@@ -104,6 +104,22 @@ where
         }
         self.known_blocks.sort_unstable();
     }
+
+    fn conditional_jump(&mut self, branch_taken: Address, branch_not_taken: Address) {
+        self.end_block(branch_not_taken);
+        self.start_block(branch_not_taken);
+        self.start_block(branch_taken);
+    }
+
+    fn direct_jump(&mut self, next_instruction: Address, target: Address) {
+        self.end_block(next_instruction);
+        self.start_block(target);
+    }
+
+    fn new_block(&mut self, next_instruction: Address) {
+        self.end_block(next_instruction);
+        self.start_block(next_instruction);
+    }
 }
 
 impl<M> HandleRv32i for BlockFinder<M>
@@ -120,9 +136,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
-        self.start_block(self.addr.wrapping_add(bimm));
+        self.conditional_jump(self.addr.wrapping_add(bimm), self.addr + 4);
     }
 
     fn bne(
@@ -131,9 +145,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
-        self.start_block(self.addr.wrapping_add(bimm));
+        self.conditional_jump(self.addr.wrapping_add(bimm), self.addr + 4);
     }
 
     fn blt(
@@ -142,9 +154,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
-        self.start_block(self.addr.wrapping_add(bimm));
+        self.conditional_jump(self.addr.wrapping_add(bimm), self.addr + 4);
     }
 
     fn bge(
@@ -153,9 +163,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
-        self.start_block(self.addr.wrapping_add(bimm));
+        self.conditional_jump(self.addr.wrapping_add(bimm), self.addr + 4);
     }
 
     fn bltu(
@@ -164,9 +172,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
-        self.start_block(self.addr.wrapping_add(bimm));
+        self.conditional_jump(self.addr.wrapping_add(bimm), self.addr + 4);
     }
 
     fn bgeu(
@@ -175,9 +181,7 @@ where
         _rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
-        self.start_block(self.addr.wrapping_add(bimm));
+        self.conditional_jump(self.addr.wrapping_add(bimm), self.addr + 4);
     }
 
     fn lb(
@@ -274,8 +278,7 @@ where
         _rs1: arviss::decoding::Reg,
         _iimm: u32,
     ) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
+        self.new_block(self.addr + 4);
     }
 
     fn sb(
@@ -307,9 +310,7 @@ where
     fn lui(&mut self, _rd: arviss::decoding::Reg, _uimm: u32) -> Self::Item {}
 
     fn jal(&mut self, _rd: arviss::decoding::Reg, jimm: u32) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
-        self.start_block((self.addr).wrapping_add(jimm));
+        self.direct_jump(self.addr + 4, self.addr.wrapping_add(jimm));
     }
 
     fn add(
@@ -425,13 +426,11 @@ where
     }
 
     fn ecall(&mut self) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
+        self.new_block(self.addr + 4);
     }
 
     fn ebreak(&mut self) -> Self::Item {
-        self.end_block(self.addr + 4);
-        self.start_block(self.addr + 4);
+        self.new_block(self.addr + 4);
     }
 }
 
@@ -496,36 +495,27 @@ where
     fn c_lui(&mut self, _rdn2: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
 
     fn c_j(&mut self, imm: u32) -> Self::Item {
-        self.end_block(self.addr + 2);
-        self.start_block(self.addr + 2);
-        self.start_block((self.addr).wrapping_add(imm));
+        self.direct_jump(self.addr + 2, self.addr.wrapping_add(imm));
     }
 
     fn c_beqz(&mut self, _rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
-        self.end_block(self.addr + 2);
-        self.start_block(self.addr + 2);
-        self.start_block(self.addr.wrapping_add(imm));
+        self.conditional_jump(self.addr.wrapping_add(imm), self.addr + 2);
     }
 
     fn c_bnez(&mut self, _rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
-        self.end_block(self.addr + 2);
-        self.start_block(self.addr + 2);
-        self.start_block(self.addr.wrapping_add(imm));
+        self.conditional_jump(self.addr.wrapping_add(imm), self.addr + 2);
     }
 
     fn c_jr(&mut self, _rs1n0: arviss::decoding::Reg) -> Self::Item {
-        self.end_block(self.addr + 2);
-        self.start_block(self.addr + 2);
+        self.new_block(self.addr + 2);
     }
 
     fn c_jalr(&mut self, _rs1n0: arviss::decoding::Reg) -> Self::Item {
-        self.end_block(self.addr + 2);
-        self.start_block(self.addr + 2);
+        self.new_block(self.addr + 2);
     }
 
     fn c_ebreak(&mut self) -> Self::Item {
-        self.end_block(self.addr + 2);
-        self.start_block(self.addr + 2);
+        self.new_block(self.addr + 2);
     }
 
     fn c_mv(&mut self, _rd: arviss::decoding::Reg, _rs2n0: arviss::decoding::Reg) -> Self::Item {}
@@ -541,8 +531,8 @@ where
 
     fn c_swsp(&mut self, _rs2: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
 
-    fn c_jal(&mut self, _imm: u32) -> Self::Item {
-        todo!()
+    fn c_jal(&mut self, imm: u32) -> Self::Item {
+        self.direct_jump(self.addr + 2, self.addr.wrapping_add(imm));
     }
 
     fn c_srli(&mut self, _rdrs1p: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
