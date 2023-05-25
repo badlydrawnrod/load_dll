@@ -1,11 +1,9 @@
-use std::fs::File;
-use std::io::prelude::*;
 use std::ops::{Index, IndexMut};
 
 use arviss::backends::memory::basic::*;
-use arviss::{
-    disassembler::Disassembler, Address, DispatchRv32ic, HandleRv32c, HandleRv32i, MemoryResult,
-};
+use arviss::{disassembler::Disassembler, Address, DispatchRv32ic, HandleRv32c, HandleRv32i};
+
+use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct Block {
@@ -36,6 +34,12 @@ where
     current_block: usize,
 }
 
+#[derive(Error, Debug)]
+enum BlockFinderError {
+    #[error("memory read failed at 0x{addr:08x}")]
+    MemoryReadFailed { addr: Address },
+}
+
 impl<M> BlockFinder<M>
 where
     M: Memory,
@@ -53,8 +57,10 @@ where
         }
     }
 
-    fn next(&mut self) -> MemoryResult<u32> {
-        self.mem.read32(self.addr)
+    fn next(&mut self) -> Result<Address, BlockFinderError> {
+        self.mem
+            .read32(self.addr)
+            .map_err(|e| BlockFinderError::MemoryReadFailed { addr: e })
     }
 
     fn start_block(&mut self, addr: Address) {
@@ -88,14 +94,14 @@ where
         block.end = addr;
     }
 
-    fn run(&mut self, addr: Address) {
+    fn run(&mut self, addr: Address) -> Result<(), BlockFinderError> {
         self.start_block(addr);
         while let Some(current_block) = self.open_blocks.pop() {
             self.current_block = current_block;
             let mut block = self.known_blocks.index(self.current_block);
             self.addr = block.start;
             while self.addr < self.eom && block.end == OPEN_BLOCK_SENTINEL {
-                let ins = self.next().unwrap(); // TODO: Lose the unwrap and handle the error.
+                let ins = self.next()?;
                 self.dispatch(ins);
                 let instruction_size = if (ins & 3) == 3 { 4 } else { 2 };
                 self.addr = self.addr.wrapping_add(instruction_size);
@@ -103,6 +109,7 @@ where
             }
         }
         self.known_blocks.sort_unstable();
+        Ok(())
     }
 
     fn conditional_jump(&mut self, branch_taken: Address, branch_not_taken: Address) {
@@ -544,23 +551,30 @@ where
 
 pub fn main() {
     // Load the image into a buffer.
-    let mut f = File::open("images/hello_world.rv32ic").expect("Failed to open image."); // TODO: Lose the expect and handle the error.
-    let mut buffer = Vec::new();
-    f.read_to_end(&mut buffer).expect("Failed to load image."); // TODO: Lose the expect and handle the error.
+    let path = "images/hello_world.rv32ic";
+    let Ok(file_data) = std::fs::read(path) else {
+        eprintln!("Failed to read file: `{}`", path);
+        std::process::exit(1);
+    };
+    let image = file_data.as_slice();
 
     // Copy the image into memory.
     let mut mem = BasicMem::new();
-    let image = buffer.as_slice();
-    mem.write_bytes(0, image)
-        .expect("Failed to initialize memory.");
+    if let Err(addr) = mem.write_bytes(0, image) {
+        eprintln!("Failed to initialize memory at: 0x{:08x}", addr);
+        std::process::exit(1);
+    };
 
     // Find the basic blocks in the image.
-    let text_size = buffer.len() - 4; // TODO: The image needs to tell us how big its text and initialized data are.
+    let text_size = image.len() - 4; // TODO: The image needs to tell us how big its text and initialized data are.
 
     let mut block_finder = BlockFinder::<BasicMem>::with_mem(mem, text_size);
-    block_finder.run(0);
+    if let Err(err) = block_finder.run(0) {
+        eprintln!("ERROR: {}", err);
+        std::process::exit(1);
+    }
 
-    // Disassemble each block.
+    // Disassemble each block for visual evidence that it's working.
     let mut dis = Disassembler;
     println!("addr     instr    code");
     for block in &block_finder.known_blocks {
@@ -570,7 +584,10 @@ pub fn main() {
         );
         let mut addr = block.start;
         while addr < block.end {
-            let ins = block_finder.mem.read32(addr).unwrap(); // TODO: lose the unwrap and handle the error.
+            let Ok(ins) = block_finder.mem.read32(addr) else {
+                eprintln!("Failed to read memory when disassembling 0x{:08x}", addr);
+                std::process::exit(1);
+            };
             let code = dis.dispatch(ins);
             let is_compact = (ins & 3) != 3;
             if is_compact {
