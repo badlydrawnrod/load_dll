@@ -22,12 +22,12 @@ impl Block {
     }
 }
 
-struct BlockFinder<M>
+struct BlockFinder<'a, M>
 where
     M: Memory,
 {
     addr: Address,
-    mem: M,
+    mem: &'a M,
     eom: Address,
     known_blocks: Vec<Block>,
     open_blocks: Vec<usize>,
@@ -40,11 +40,11 @@ enum BlockFinderError {
     MemoryReadFailed { addr: Address },
 }
 
-impl<M> BlockFinder<M>
+impl<'a, M> BlockFinder<'a, M>
 where
     M: Memory,
 {
-    pub fn with_mem(mem: M, len: usize) -> Self {
+    pub fn with_mem(mem: &'a M, len: usize) -> Self {
         let addr = 0;
         let eom = addr + (len as Address);
         Self {
@@ -129,7 +129,7 @@ where
     }
 }
 
-impl<M> HandleRv32i for BlockFinder<M>
+impl<M> HandleRv32i for BlockFinder<'_, M>
 where
     M: Memory,
 {
@@ -441,7 +441,7 @@ where
     }
 }
 
-impl<M> HandleRv32c for BlockFinder<M>
+impl<M> HandleRv32c for BlockFinder<'_, M>
 where
     M: Memory,
 {
@@ -568,7 +568,7 @@ pub fn main() {
     // Find the basic blocks in the image.
     let text_size = image.len() - 4; // TODO: The image needs to tell us how big its text and initialized data are.
 
-    let mut block_finder = BlockFinder::<BasicMem>::with_mem(mem, text_size);
+    let mut block_finder = BlockFinder::<BasicMem>::with_mem(&mem, text_size);
     if let Err(err) = block_finder.run(0) {
         eprintln!("ERROR: {}", err);
         std::process::exit(1);
@@ -584,7 +584,7 @@ pub fn main() {
         );
         let mut addr = block.start;
         while addr < block.end {
-            let Ok(ins) = block_finder.mem.read32(addr) else {
+            let Ok(ins) = mem.read32(addr) else {
                 eprintln!("Failed to read memory when disassembling 0x{:08x}", addr);
                 std::process::exit(1);
             };
