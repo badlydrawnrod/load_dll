@@ -1,14 +1,15 @@
+use std::collections::binary_heap::Iter;
 use std::ops::{Index, IndexMut};
 
 use arviss::backends::memory::basic::*;
-use arviss::{disassembler::Disassembler, Address, DispatchRv32ic, HandleRv32c, HandleRv32i};
+use arviss::{Address, DispatchRv32ic, HandleRv32c, HandleRv32i};
 
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
-struct Block {
-    start: Address, // Address of the first instruction in the basic block.
-    end: Address,   // Address of the instruction following the last instruction in the basic block.
+pub struct Block {
+    pub start: Address, // Address of the first instruction in the basic block.
+    pub end: Address, // Address of the instruction following the last instruction in the basic block.
 }
 
 const OPEN_BLOCK_SENTINEL: Address = 0;
@@ -22,7 +23,7 @@ impl Block {
     }
 }
 
-struct BlockFinder<'a, M>
+pub struct BlockFinder<'a, M>
 where
     M: Memory,
 {
@@ -35,7 +36,7 @@ where
 }
 
 #[derive(Error, Debug)]
-enum BlockFinderError {
+pub enum BlockFinderError {
     #[error("memory read failed at 0x{addr:08x}")]
     MemoryReadFailed { addr: Address },
 }
@@ -94,7 +95,7 @@ where
         block.end = addr;
     }
 
-    fn run(&mut self, addr: Address) -> Result<(), BlockFinderError> {
+    pub fn find_blocks(&mut self, addr: Address) -> Result<Vec<Block>, BlockFinderError> {
         self.start_block(addr);
         while let Some(current_block) = self.open_blocks.pop() {
             self.current_block = current_block;
@@ -109,7 +110,7 @@ where
             }
         }
         self.known_blocks.sort_unstable();
-        Ok(())
+        Ok(std::mem::take(&mut self.known_blocks))
     }
 
     fn conditional_jump(&mut self, branch_taken: Address, branch_not_taken: Address) {
@@ -547,58 +548,4 @@ where
     fn c_srai(&mut self, _rdrs1p: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
 
     fn c_slli(&mut self, _rdrs1n0: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
-}
-
-pub fn main() {
-    // Load the image into a buffer.
-    let path = "images/hello_world.rv32ic";
-    let Ok(file_data) = std::fs::read(path) else {
-        eprintln!("Failed to read file: `{}`", path);
-        std::process::exit(1);
-    };
-    let image = file_data.as_slice();
-
-    // Copy the image into memory.
-    let mut mem = BasicMem::new();
-    if let Err(addr) = mem.write_bytes(0, image) {
-        eprintln!("Failed to initialize memory at: 0x{:08x}", addr);
-        std::process::exit(1);
-    };
-
-    // Find the basic blocks in the image.
-    let text_size = image.len() - 4; // TODO: The image needs to tell us how big its text and initialized data are.
-
-    let mut block_finder = BlockFinder::<BasicMem>::with_mem(&mem, text_size);
-    if let Err(err) = block_finder.run(0) {
-        eprintln!("ERROR: {}", err);
-        std::process::exit(1);
-    }
-
-    // Disassemble each block for visual evidence that it's working.
-    let mut dis = Disassembler;
-    println!("addr     instr    code");
-    for block in &block_finder.known_blocks {
-        println!(
-            "; --------------- Basic block: {:08x} - {:08x}",
-            block.start, block.end
-        );
-        let mut addr = block.start;
-        while addr < block.end {
-            let Ok(ins) = mem.read32(addr) else {
-                eprintln!("Failed to read memory when disassembling 0x{:08x}", addr);
-                std::process::exit(1);
-            };
-            let code = dis.dispatch(ins);
-            let is_compact = (ins & 3) != 3;
-            if is_compact {
-                // Compact instructions are 2 bytes each.
-                println!("{:08x}     {:04x} {}", addr, ins & 0xffff, code);
-                addr += 2;
-            } else {
-                // Regular instructions are 4 bytes each.
-                println!("{:08x} {:08x} {}", addr, ins, code);
-                addr += 4;
-            }
-        }
-    }
 }
