@@ -12,7 +12,7 @@ impl HandleRv32i for BlockWriter {
     fn illegal(&mut self, ins: u32) -> Self::Item {
         format!(
             r#"
-            self.handle_trap(TrapCause::IllegalInstruction({ins}));
+            cpu.handle_trap(TrapCause::IllegalInstruction({ins}));
         "#
         )
     }
@@ -25,8 +25,8 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-        if self.rx({rs1}) == self.rx({rs2}) {{
-            self.set_next_pc(self.pc().wrapping_add({bimm}));
+        if cpu.rx({rs1}) == cpu.rx({rs2}) {{
+            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
         }}
         "#
         )
@@ -40,8 +40,8 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-        if self.rx({rs1}) != self.rx({rs2}) {{
-            self.set_next_pc(self.pc().wrapping_add({bimm}));
+        if cpu.rx({rs1}) != cpu.rx({rs2}) {{
+            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
         }}
         "#
         )
@@ -55,8 +55,8 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-        if (self.rx({rs1}) as i32) < (self.rx({rs2}) as i32) {{
-            self.set_next_pc(self.pc().wrapping_add({bimm}));
+        if (cpu.rx({rs1}) as i32) < (cpu.rx({rs2}) as i32) {{
+            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
         }}
         "#
         )
@@ -70,8 +70,8 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-        if (self.rx({rs1}) as i32) >= (self.rx({rs2}) as i32) {{
-            self.set_next_pc(self.pc().wrapping_add({bimm}));
+        if (cpu.rx({rs1}) as i32) >= (cpu.rx({rs2}) as i32) {{
+            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
         }}
         "#
         )
@@ -85,8 +85,8 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-        if self.rx({rs1}) < self.rx({rs2}) {{
-            self.set_next_pc(self.pc().wrapping_add({bimm}));
+        if cpu.rx({rs1}) < cpu.rx({rs2}) {{
+            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
         }}
         "#
         )
@@ -100,8 +100,8 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-        if self.rx({rs1}) >= self.rx({rs2}) {{
-            self.set_next_pc(self.pc().wrapping_add({bimm}));
+        if cpu.rx({rs1}) >= cpu.rx({rs2}) {{
+            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
         }}
         "#
         )
@@ -115,12 +115,12 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            match self.read8(self.rx({rs1}).wrapping_add({iimm})) {{
+            match cpu.read8(cpu.rx({rs1}).wrapping_add({iimm})) {{
                 Ok(byte) => {{
-                    self.wx({rd}, (((byte as i8) as i16) as i32) as u32); // TODO: this should be a function.
+                    cpu.wx({rd}, (((byte as i8) as i16) as i32) as u32); // TODO: this should be a function.
                 }}
                 Err(address) => {{
-                    self.handle_trap(TrapCause::LoadAccessFault(address));
+                    cpu.handle_trap(TrapCause::LoadAccessFault(address));
                 }}
             }}
         "#
@@ -135,12 +135,12 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            match self.read16(self.rx({rs1}).wrapping_add({iimm})) {{
+            match cpu.read16(cpu.rx({rs1}).wrapping_add({iimm})) {{
                 Ok(half_word) => {{
-                    self.wx({rd}, ((half_word as i16) as i32) as u32); // TODO: this should be a function.
+                    cpu.wx({rd}, ((half_word as i16) as i32) as u32); // TODO: this should be a function.
                 }}
                 Err(address) => {{
-                    self.handle_trap(TrapCause::LoadAccessFault(address));
+                    cpu.handle_trap(TrapCause::LoadAccessFault(address));
                 }}
             }}
     
@@ -156,12 +156,12 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            match self.read32(self.rx({rs1}).wrapping_add({iimm})) {{
+            match cpu.read32(cpu.rx({rs1}).wrapping_add({iimm})) {{
                 Ok(word) => {{
-                    self.wx({rd}, word);
+                    cpu.wx({rd}, word);
                 }}
                 Err(address) => {{
-                    self.handle_trap(TrapCause::LoadAccessFault(address));
+                    cpu.handle_trap(TrapCause::LoadAccessFault(address));
                 }}
             }}
         "#
@@ -176,12 +176,12 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            match self.read8(self.rx({rs1}).wrapping_add({iimm})) {{
+            match cpu.read8(cpu.rx({rs1}).wrapping_add({iimm})) {{
                 Ok(byte) => {{
-                    self.wx({rd}, byte as u32);
+                    cpu.wx({rd}, byte as u32);
                 }}
                 Err(address) => {{
-                    self.handle_trap(TrapCause::LoadAccessFault(address));
+                    cpu.handle_trap(TrapCause::LoadAccessFault(address));
                 }}
             }}
             "#
@@ -196,11 +196,11 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            match self.read16(self.rx({rs1}).wrapping_add({iimm})) {{
+            match cpu.read16(cpu.rx({rs1}).wrapping_add({iimm})) {{
                 Ok(half_word) => {{
-                    self.wx({rd}, half_word as u32);
+                    cpu.wx({rd}, half_word as u32);
                 }}
-                Err(address) => self.handle_trap(TrapCause::LoadAccessFault(address)),
+                Err(address) => cpu.handle_trap(TrapCause::LoadAccessFault(address)),
             }}
         "#
         )
@@ -214,7 +214,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}).wrapping_add({iimm}));
+            cpu.wx({rd}, cpu.rx({rs1}).wrapping_add({iimm}));
         "#
         )
     }
@@ -227,9 +227,9 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            let xreg_rs1 = self.rx({rs1}) as i32;
+            let xreg_rs1 = cpu.rx({rs1}) as i32;
             let iimm = {iimm} as i32;
-            self.wx({rd}, if xreg_rs1 < iimm {{ 1 }} else {{ 0 }});
+            cpu.wx({rd}, if xreg_rs1 < iimm {{ 1 }} else {{ 0 }});
         "#
         )
     }
@@ -242,7 +242,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, if self.rx({rs1}) < {iimm} {{ 1 }} else {{ 0 }});
+            cpu.wx({rd}, if cpu.rx({rs1}) < {iimm} {{ 1 }} else {{ 0 }});
         "#
         )
     }
@@ -255,7 +255,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) ^ {iimm});
+            cpu.wx({rd}, cpu.rx({rs1}) ^ {iimm});
         "#
         )
     }
@@ -268,7 +268,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) | {iimm});
+            cpu.wx({rd}, cpu.rx({rs1}) | {iimm});
         "#
         )
     }
@@ -281,7 +281,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) & {iimm});
+            cpu.wx({rd}, cpu.rx({rs1}) & {iimm});
         "#
         )
     }
@@ -294,9 +294,9 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            let rs1_before = self.rx({rs1}); // Because rd and rs1 might be the same register.
-            self.wx({rd}, self.pc().wrapping_add(4));
-            self.set_next_pc(rs1_before.wrapping_add({iimm}) & !1);
+            let rs1_before = cpu.rx({rs1}); // Because rd and rs1 might be the same register.
+            cpu.wx({rd}, cpu.pc().wrapping_add(4));
+            cpu.set_next_pc(rs1_before.wrapping_add({iimm}) & !1);
         "#
         )
     }
@@ -310,9 +310,9 @@ impl HandleRv32i for BlockWriter {
         format!(
             r#"
             if let Err(address) = 
-                self.write8(self.rx({rs1}).wrapping_add({simm}), (self.rx({rs2}) & 0xff) as u8)
+                cpu.write8(cpu.rx({rs1}).wrapping_add({simm}), (cpu.rx({rs2}) & 0xff) as u8)
             {{
-                self.handle_trap(TrapCause::StoreAccessFault(address))
+                cpu.handle_trap(TrapCause::StoreAccessFault(address))
             }}
         "#
         )
@@ -326,11 +326,11 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            if let Err(address) = self.write16(
-                self.rx({rs1}).wrapping_add({simm}),
-                (self.rx({rs2}) & 0xffff) as u16,
+            if let Err(address) = cpu.write16(
+                cpu.rx({rs1}).wrapping_add({simm}),
+                (cpu.rx({rs2}) & 0xffff) as u16,
             ) {{
-                self.handle_trap(TrapCause::StoreAccessFault(address))
+                cpu.handle_trap(TrapCause::StoreAccessFault(address))
             }}
         "#
         )
@@ -344,8 +344,8 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            if let Err(address) = self.write32(self.rx({rs1}).wrapping_add({simm}), self.rx({rs2})) {{
-                self.handle_trap(TrapCause::StoreAccessFault(address))
+            if let Err(address) = cpu.write32(cpu.rx({rs1}).wrapping_add({simm}), cpu.rx({rs2})) {{
+                cpu.handle_trap(TrapCause::StoreAccessFault(address))
             }}
         "#
         )
@@ -354,7 +354,7 @@ impl HandleRv32i for BlockWriter {
     fn auipc(&mut self, rd: arviss::decoding::Reg, uimm: u32) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.pc().wrapping_add({uimm}));
+            cpu.wx({rd}, cpu.pc().wrapping_add({uimm}));
         "#
         )
     }
@@ -362,7 +362,7 @@ impl HandleRv32i for BlockWriter {
     fn lui(&mut self, rd: arviss::decoding::Reg, uimm: u32) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, {uimm});
+            cpu.wx({rd}, {uimm});
         "#
         )
     }
@@ -370,8 +370,8 @@ impl HandleRv32i for BlockWriter {
     fn jal(&mut self, rd: arviss::decoding::Reg, jimm: u32) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.pc().wrapping_add(4));
-            self.set_next_pc(self.pc().wrapping_add({jimm}));   
+            cpu.wx({rd}, cpu.pc().wrapping_add(4));
+            cpu.set_next_pc(cpu.pc().wrapping_add({jimm}));   
         "#
         )
     }
@@ -384,7 +384,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}).wrapping_add(self.rx({rs2})));
+            cpu.wx({rd}, cpu.rx({rs1}).wrapping_add(cpu.rx({rs2})));
         "#
         )
     }
@@ -397,7 +397,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}).wrapping_sub(self.rx({rs2})));
+            cpu.wx({rd}, cpu.rx({rs1}).wrapping_sub(cpu.rx({rs2})));
         "#
         )
     }
@@ -410,7 +410,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) << (self.rx({rs2}) % 32));
+            cpu.wx({rd}, cpu.rx({rs1}) << (cpu.rx({rs2}) % 32));
         "#
         )
     }
@@ -423,9 +423,9 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            let xreg_rs1 = self.rx({rs1}) as i32;
-            let xreg_rs2 = self.rx({rs2}) as i32;
-            self.wx({rd}, if xreg_rs1 < xreg_rs2 {{ 1 }} else {{ 0 }});
+            let xreg_rs1 = cpu.rx({rs1}) as i32;
+            let xreg_rs2 = cpu.rx({rs2}) as i32;
+            cpu.wx({rd}, if xreg_rs1 < xreg_rs2 {{ 1 }} else {{ 0 }});
         "#
         )
     }
@@ -438,9 +438,9 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            let xreg_rs1 = self.rx({rs1});
-            let xreg_rs2 = self.rx({rs2});
-            self.wx({rd}, if xreg_rs1 < xreg_rs2 {{ 1 }} else {{ 0 }});
+            let xreg_rs1 = cpu.rx({rs1});
+            let xreg_rs2 = cpu.rx({rs2});
+            cpu.wx({rd}, if xreg_rs1 < xreg_rs2 {{ 1 }} else {{ 0 }});
         "#
         )
     }
@@ -453,7 +453,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) ^ self.rx({rs2}));
+            cpu.wx({rd}, cpu.rx({rs1}) ^ cpu.rx({rs2}));
         "#
         )
     }
@@ -466,7 +466,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) >> (self.rx({rs2}) % 32));
+            cpu.wx({rd}, cpu.rx({rs1}) >> (cpu.rx({rs2}) % 32));
         "#
         )
     }
@@ -479,9 +479,9 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            let xreg_rs1 = self.rx({rs1}) as i32;
-            let shift = (self.rx({rs2}) % 32) as i32;
-            self.wx({rd}, (xreg_rs1 >> shift) as u32);
+            let xreg_rs1 = cpu.rx({rs1}) as i32;
+            let shift = (cpu.rx({rs2}) % 32) as i32;
+            cpu.wx({rd}, (xreg_rs1 >> shift) as u32);
         "#
         )
     }
@@ -494,7 +494,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) | self.rx({rs2}));
+            cpu.wx({rd}, cpu.rx({rs1}) | cpu.rx({rs2}));
         "#
         )
     }
@@ -507,7 +507,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) & self.rx({rs2}));
+            cpu.wx({rd}, cpu.rx({rs1}) & cpu.rx({rs2}));
         "#
         )
     }
@@ -520,7 +520,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) << {shamt});
+            cpu.wx({rd}, cpu.rx({rs1}) << {shamt});
         "#
         )
     }
@@ -533,7 +533,7 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.wx({rd}, self.rx({rs1}) >> {shamt});
+            cpu.wx({rd}, cpu.rx({rs1}) >> {shamt});
         "#
         )
     }
@@ -546,9 +546,9 @@ impl HandleRv32i for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            let xreg_rs = self.rx({rs1}) as i32;
+            let xreg_rs = cpu.rx({rs1}) as i32;
             let shamt = {shamt} as i32;
-            self.wx({rd}, (xreg_rs >> shamt) as u32);
+            cpu.wx({rd}, (xreg_rs >> shamt) as u32);
         "#
         )
     }
@@ -565,7 +565,7 @@ impl HandleRv32i for BlockWriter {
     fn ecall(&mut self) -> Self::Item {
         format!(
             r#"
-            self.handle_ecall();
+            cpu.handle_ecall();
         "#
         )
     }
@@ -573,7 +573,7 @@ impl HandleRv32i for BlockWriter {
     fn ebreak(&mut self) -> Self::Item {
         format!(
             r#"
-            self.handle_ebreak();
+            cpu.handle_ebreak();
         "#
         )
     }
@@ -585,7 +585,7 @@ impl HandleRv32c for BlockWriter {
     fn c_addi4spn(&mut self, rdp: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.addi({rdp}, Reg::SP, {imm});
+            cpu.addi({rdp}, Reg::SP, {imm});
         "#
         )
     }
@@ -598,7 +598,7 @@ impl HandleRv32c for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.lw({rdp}, {rs1p}, {imm});
+            cpu.lw({rdp}, {rs1p}, {imm});
         "#
         )
     }
@@ -611,7 +611,7 @@ impl HandleRv32c for BlockWriter {
     ) -> Self::Item {
         format!(
             r#"
-            self.sw({rs1p}, {rs2p}, {imm});            
+            cpu.sw({rs1p}, {rs2p}, {imm});            
         "#
         )
     }
@@ -619,7 +619,7 @@ impl HandleRv32c for BlockWriter {
     fn c_sub(&mut self, rdrs1p: arviss::decoding::Reg, rs2p: arviss::decoding::Reg) -> Self::Item {
         format!(
             r#"
-            self.sub({rdrs1p}, {rdrs1p}, {rs2p});
+            cpu.sub({rdrs1p}, {rdrs1p}, {rs2p});
         "#
         )
     }
@@ -627,7 +627,7 @@ impl HandleRv32c for BlockWriter {
     fn c_xor(&mut self, rdrs1p: arviss::decoding::Reg, rs2p: arviss::decoding::Reg) -> Self::Item {
         format!(
             r#"
-            self.xor({rdrs1p}, {rdrs1p}, {rs2p});
+            cpu.xor({rdrs1p}, {rdrs1p}, {rs2p});
         "#
         )
     }
@@ -635,7 +635,7 @@ impl HandleRv32c for BlockWriter {
     fn c_or(&mut self, rdrs1p: arviss::decoding::Reg, rs2p: arviss::decoding::Reg) -> Self::Item {
         format!(
             r#"
-            self.or({rdrs1p}, {rdrs1p}, {rs2p});
+            cpu.or({rdrs1p}, {rdrs1p}, {rs2p});
         "#
         )
     }
@@ -643,7 +643,7 @@ impl HandleRv32c for BlockWriter {
     fn c_and(&mut self, rdrs1p: arviss::decoding::Reg, rs2p: arviss::decoding::Reg) -> Self::Item {
         format!(
             r#"
-            self.and({rdrs1p}, {rdrs1p}, {rs2p});
+            cpu.and({rdrs1p}, {rdrs1p}, {rs2p});
         "#
         )
     }
@@ -655,7 +655,7 @@ impl HandleRv32c for BlockWriter {
     fn c_addi16sp(&mut self, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.addi(Reg::SP, Reg::SP, {imm});
+            cpu.addi(Reg::SP, Reg::SP, {imm});
         "#
         )
     }
@@ -663,7 +663,7 @@ impl HandleRv32c for BlockWriter {
     fn c_andi(&mut self, rsrs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.andi({rsrs1p}, {rsrs1p}, {imm});
+            cpu.andi({rsrs1p}, {rsrs1p}, {imm});
         "#
         )
     }
@@ -671,7 +671,7 @@ impl HandleRv32c for BlockWriter {
     fn c_addi(&mut self, rdrs1n0: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.addi({rdrs1n0}, {rdrs1n0}, {imm});
+            cpu.addi({rdrs1n0}, {rdrs1n0}, {imm});
         "#
         )
     }
@@ -679,7 +679,7 @@ impl HandleRv32c for BlockWriter {
     fn c_li(&mut self, rd: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.addi({rd}, Reg::ZERO, {imm});            
+            cpu.addi({rd}, Reg::ZERO, {imm});            
         "#
         )
     }
@@ -687,7 +687,7 @@ impl HandleRv32c for BlockWriter {
     fn c_lui(&mut self, rdn2: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.lui({rdn2}, {imm});
+            cpu.lui({rdn2}, {imm});
         "#
         )
     }
@@ -695,7 +695,7 @@ impl HandleRv32c for BlockWriter {
     fn c_j(&mut self, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.set_next_pc(self.pc().wrapping_add({imm}));            
+            cpu.set_next_pc(cpu.pc().wrapping_add({imm}));            
         "#
         )
     }
@@ -703,7 +703,7 @@ impl HandleRv32c for BlockWriter {
     fn c_beqz(&mut self, rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.beq({rs1p}, Reg::ZERO, {imm});
+            cpu.beq({rs1p}, Reg::ZERO, {imm});
         "#
         )
     }
@@ -711,7 +711,7 @@ impl HandleRv32c for BlockWriter {
     fn c_bnez(&mut self, rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.bne({rs1p}, Reg::ZERO, {imm});
+            cpu.bne({rs1p}, Reg::ZERO, {imm});
         "#
         )
     }
@@ -719,7 +719,7 @@ impl HandleRv32c for BlockWriter {
     fn c_jr(&mut self, rs1n0: arviss::decoding::Reg) -> Self::Item {
         format!(
             r#"
-            self.set_next_pc(self.rx({rs1n0}) & !1);
+            cpu.set_next_pc(cpu.rx({rs1n0}) & !1);
         "#
         )
     }
@@ -727,8 +727,8 @@ impl HandleRv32c for BlockWriter {
     fn c_jalr(&mut self, rs1n0: arviss::decoding::Reg) -> Self::Item {
         format!(
             r#"
-            self.wx(Reg::RA, self.pc().wrapping_add(2));
-            self.set_next_pc(self.rx({rs1n0}) & !1);
+            cpu.wx(Reg::RA, cpu.pc().wrapping_add(2));
+            cpu.set_next_pc(cpu.rx({rs1n0}) & !1);
     
         "#
         )
@@ -737,7 +737,7 @@ impl HandleRv32c for BlockWriter {
     fn c_ebreak(&mut self) -> Self::Item {
         format!(
             r#"
-            self.ebreak();
+            cpu.ebreak();
         "#
         )
     }
@@ -745,7 +745,7 @@ impl HandleRv32c for BlockWriter {
     fn c_mv(&mut self, rd: arviss::decoding::Reg, rs2n0: arviss::decoding::Reg) -> Self::Item {
         format!(
             r#"
-            self.add({rd}, Reg::ZERO, {rs2n0});
+            cpu.add({rd}, Reg::ZERO, {rs2n0});
         "#
         )
     }
@@ -753,7 +753,7 @@ impl HandleRv32c for BlockWriter {
     fn c_add(&mut self, rdrs1: arviss::decoding::Reg, rs2n0: arviss::decoding::Reg) -> Self::Item {
         format!(
             r#"
-            self.add({rdrs1}, {rdrs1}, {rs2n0});
+            cpu.add({rdrs1}, {rdrs1}, {rs2n0});
         "#
         )
     }
@@ -761,7 +761,7 @@ impl HandleRv32c for BlockWriter {
     fn c_lwsp(&mut self, rdn0: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.lw({rdn0}, Reg::SP, {imm});
+            cpu.lw({rdn0}, Reg::SP, {imm});
         "#
         )
     }
@@ -769,7 +769,7 @@ impl HandleRv32c for BlockWriter {
     fn c_swsp(&mut self, rs2: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.sw(Reg::SP, {rs2}, {imm});
+            cpu.sw(Reg::SP, {rs2}, {imm});
         "#
         )
     }
@@ -777,8 +777,8 @@ impl HandleRv32c for BlockWriter {
     fn c_jal(&mut self, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.wx(Reg::RA, self.pc().wrapping_add(2));
-            self.set_next_pc(self.pc().wrapping_add({imm}));
+            cpu.wx(Reg::RA, cpu.pc().wrapping_add(2));
+            cpu.set_next_pc(cpu.pc().wrapping_add({imm}));
         "#
         )
     }
@@ -786,7 +786,7 @@ impl HandleRv32c for BlockWriter {
     fn c_srli(&mut self, rdrs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.srli({rdrs1p}, {rdrs1p}, {imm});
+            cpu.srli({rdrs1p}, {rdrs1p}, {imm});
         "#
         )
     }
@@ -794,7 +794,7 @@ impl HandleRv32c for BlockWriter {
     fn c_srai(&mut self, rdrs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.srai({rdrs1p}, {rdrs1p}, {imm});
+            cpu.srai({rdrs1p}, {rdrs1p}, {imm});
         "#
         )
     }
@@ -802,7 +802,7 @@ impl HandleRv32c for BlockWriter {
     fn c_slli(&mut self, rdrs1n0: arviss::decoding::Reg, imm: u32) -> Self::Item {
         format!(
             r#"
-            self.slli({rdrs1n0}, {rdrs1n0}, {imm});
+            cpu.slli({rdrs1n0}, {rdrs1n0}, {imm});
         "#
         )
     }
@@ -840,7 +840,8 @@ pub fn main() {
     let mut block_writer = BlockWriter {};
     for block in blocks {
         let mut addr = block.start;
-        println!("\nfn block_{:08x}_{:08x}() {{", block.start, block.end);
+        println!("\n#[no_mangle]");
+        println!("pub extern \"C\" fn block_{:08x}_{:08x}(cpu: &mut Cpu) {{", block.start, block.end);
         while addr < block.end {
             let Ok(ins) = mem.read32(addr) else {
                 eprintln!("Failed to read memory when compiling 0x{:08x}", addr);
