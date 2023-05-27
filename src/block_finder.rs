@@ -1,4 +1,3 @@
-use std::collections::binary_heap::Iter;
 use std::ops::{Index, IndexMut};
 
 use arviss::backends::memory::basic::*;
