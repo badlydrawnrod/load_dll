@@ -13,20 +13,23 @@ type Cpu = Rv32iCpu<BasicMem>;
 type ArvissFunc = extern "C" fn(&mut Cpu);
 
 struct Compiler {
-    dir: TempDir,
+    temp_dir: TempDir,
+    libs: Vec<Library>,
 }
 
 struct Compilation {
-    _lib: Library, // Keep the library alive.
     block_map: HashMap<Address, ArvissFunc>,
 }
 
 impl Compiler {
     fn new(dir: TempDir) -> Self {
-        Self { dir }
+        Self {
+            temp_dir: dir,
+            libs: Vec::new(),
+        }
     }
 
-    fn compile<'a>(&self, image: &[u8]) -> Option<Compilation> {
+    fn compile<'a>(&mut self, image: &[u8]) -> Option<Compilation> {
         // Copy the image into memory.
         let mut mem = BasicMem::new();
         if let Err(addr) = mem.write_bytes(0, image) {
@@ -46,7 +49,7 @@ impl Compiler {
         };
 
         // Create a file in the temporary directory.
-        let file_path = self.dir.path().join("demo.rs");
+        let file_path = self.temp_dir.path().join("demo.rs");
         let Ok(mut f) = File::create(file_path) else {
             eprintln!("Failed to create file");
             std::process::exit(1);
@@ -66,14 +69,14 @@ impl Compiler {
 
         // Compile the module to a .so.
         let filename = self
-            .dir
+            .temp_dir
             .path()
             .join("demo.rs")
             .to_string_lossy()
             .to_string();
         let mut command = Command::new("rustc");
         let Ok(run) = command
-            .current_dir(self.dir.path())
+            .current_dir(self.temp_dir.path())
             .arg("--edition=2021")
             .arg("--crate-type")
             .arg("cdylib")
@@ -92,7 +95,7 @@ impl Compiler {
         assert!(run.success());
 
         // Load the library.
-        let library_path = self.dir.path().join("libdemo.so");
+        let library_path = self.temp_dir.path().join("libdemo.so");
         let lib = unsafe { Library::new(library_path).unwrap() };
 
         // Load the functions from the library.
@@ -107,10 +110,10 @@ impl Compiler {
             block_map
         };
 
-        Some(Compilation {
-            _lib: lib,
-            block_map,
-        })
+        // The compiler owns the library.
+        self.libs.push(lib);
+
+        Some(Compilation { block_map })
     }
 }
 
@@ -120,23 +123,22 @@ pub fn main() {
         eprintln!("Failed to create temporary directory");
         std::process::exit(1);
     };
-
     println!(
         "Look in {:?} for the generated code and library",
         dir.path()
     );
 
-    // Load the image into a buffer.
+    // Create the compiler.
+    let mut compiler = Compiler::new(dir);
+
+    // Load the image into a buffer and compile it.
     let path = "images/hello_world.rv32ic";
     let Ok(file_data) = std::fs::read(path) else {
         eprintln!("Failed to read file: `{}`", path);
         std::process::exit(1);
     };
     let image = file_data.as_slice();
-
-    // Compile the image ahead-of-time.
-    let compiler = Compiler::new(dir);
-    let compilation = compiler.compile(&image).unwrap();
+    let compiled_code = compiler.compile(&image).unwrap();
 
     // Copy the image into simulator memory.
     let mut mem = BasicMem::new();
@@ -145,12 +147,15 @@ pub fn main() {
         std::process::exit(1);
     };
 
+    // TODO: What if we have multiple images?
+
     // Create a simulator and run it by calling the compiled functions.
     let mut addr: Address = 0;
     let mut cpu = Cpu::with_mem(mem);
     while !cpu.is_trapped() {
-        // TODO: Fall back to interpreting if we can't find a basic block in the map.
-        let run_one = compilation.block_map.get(&addr).unwrap();
+        // TODO: Fall back to interpreting if we can't find a basic block in the map ... or compilation if
+        // we're feeling adventurous.
+        let run_one = compiled_code.block_map.get(&addr).unwrap();
         run_one(&mut cpu);
         addr = cpu.transfer();
     }
