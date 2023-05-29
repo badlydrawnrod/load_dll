@@ -1,8 +1,11 @@
-use arviss::{
-    backends::memory::basic::*, disassembler::Disassembler, DispatchRv32ic, HandleRv32c,
-    HandleRv32i,
-};
+use arviss::platforms::basic::*;
+use arviss::{disassembler::Disassembler, DispatchRv32ic, HandleRv32c, HandleRv32i};
+use libloading::{Library, Symbol};
 use load_dll::block_finder::*;
+use std::fs::File;
+use std::io::{self, BufRead, Write};
+use std::process::Command;
+use tempdir::TempDir;
 
 struct BlockWriter {}
 
@@ -835,16 +838,41 @@ pub fn main() {
         }
     };
 
+    // Open a temporary directory that will be cleaned up at the end.
+    let Ok(dir) = TempDir::new("rhtest") else {
+        eprintln!("Failed to create temporary directory");
+        std::process::exit(1);
+    };
+
+    // Create a file in that directory.
+    let file_path = dir.path().join("demo.rs");
+    println!("Look in {:?} for the generated code", file_path);
+    let Ok(mut f) = File::create(file_path) else {
+        eprintln!("Failed to create file");
+        std::process::exit(1);
+    };
+
+    writeln!(f, "use arviss;").unwrap();
+    writeln!(f, "use arviss::HandleRv32i;").unwrap();
+    writeln!(f, "use arviss::platforms::basic::*;").unwrap();
+    writeln!(f, "use arviss::decoding::Reg;").unwrap();
+    writeln!(f, "type Cpu = Rv32iCpu::<BasicMem>;").unwrap();
+
     // Output each basic block as Rust code.
     let mut dis = Disassembler;
     let mut block_writer = BlockWriter {};
     for block in blocks {
         let mut addr = block.start;
-        println!("\n#[no_mangle]");
-        println!("pub extern \"C\" fn block_{:08x}_{:08x}(cpu: &mut Cpu) {{", block.start, block.end);
+        writeln!(f, "\n#[no_mangle]").unwrap(); // TODO: don't unwrap.
+        writeln!(
+            f,
+            "pub extern \"C\" fn block_{:08x}_{:08x}(cpu: &mut Cpu) {{",
+            block.start, block.end
+        )
+        .unwrap(); // TODO: don't unwrap.
         while addr < block.end {
             let Ok(ins) = mem.read32(addr) else {
-                eprintln!("Failed to read memory when compiling 0x{:08x}", addr);
+                println!("Failed to read memory when compiling 0x{:08x}", addr);
                 std::process::exit(1);
             };
 
@@ -853,16 +881,70 @@ pub fn main() {
             let is_compact = (ins & 3) != 3;
             if is_compact {
                 // Compact instructions are 2 bytes each.
-                print!("// {:08x}     {:04x} {}", addr, ins & 0xffff, code);
+                writeln!(f, "// {:08x}     {:04x} {}", addr, ins & 0xffff, code).unwrap(); // Don't unwrap.
                 addr += 2;
             } else {
                 // Regular instructions are 4 bytes each.
-                print!("// {:08x} {:08x} {}", addr, ins, code);
+                writeln!(f, "// {:08x} {:08x} {}", addr, ins, code).unwrap(); // Don't unwrap.
                 addr += 4;
             }
             let code = block_writer.dispatch(ins);
-            println!("{code}");
+            writeln!(f, "{code}").unwrap(); // TODO: don't unwrap.
         }
-        println!("}}");
+        writeln!(f, "}}").unwrap(); // TODO: don't unwrap.;
+    }
+
+    if let Err(err) = f.sync_all() {
+        eprintln!("Failed to sync: {err}");
+        std::process::exit(1);
+    }
+
+    // Compile it to a .so.
+    let filename = dir.path().join("demo.rs").to_string_lossy().to_string();
+    let mut command = Command::new("rustc");
+    let Ok(run) = command
+        .current_dir(dir.path())
+        .arg("--edition=2021")
+        .arg("--crate-type")
+        .arg("cdylib")
+        .arg("--extern")
+        .arg("arviss=/home/rod/projects/learn_rust/100days/load_dll/target/debug/deps/libarviss-fa3eb26a5be62bea.rlib")
+        .arg("-C")
+        .arg("opt-level=2")
+        .arg("-C")
+        .arg("strip=debuginfo")
+        .arg(filename)
+        .status() else {
+            eprintln!("Failed to compile");
+            std::process::exit(1);
+        };
+    assert!(run.success());
+
+    // Create a simulator.
+    type Cpu = Rv32iCpu::<BasicMem>;
+    type ArvissFunc = extern "C" fn(&mut Cpu);
+
+    let mut cpu = Cpu::new();
+
+    // Load the library.
+    let library_path = dir.path().join("libdemo.so");
+    println!(
+        "Look in {:?} for the generated code and library",
+        dir.path()
+    );
+
+    unsafe {
+        let lib = Library::new(library_path).unwrap();
+
+        // Run the compiled code that we loaded from the DLL against our simulator.
+        let run_one: Symbol<ArvissFunc> = lib.get(b"block_00000000_00000024").unwrap();
+        run_one(&mut cpu);
+        println!("cpu.pc = {}", cpu.pc());
+    }
+
+    // Give the user (me) an opportunity to disassemble the binary.
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        println!("{}", line.unwrap());
     }
 }
