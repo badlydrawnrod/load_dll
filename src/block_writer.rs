@@ -95,6 +95,19 @@ where
 
         Ok(())
     }
+
+    pub fn write_blocks(
+        &mut self,
+        writer: &mut impl Write,
+        blocks: impl IntoIterator<Item = &'a Block>,
+    ) -> Result<(), BlockWriterError> {
+        self.begin(writer)?;
+        for block in blocks {
+            self.write_block(writer, &block)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a, M> HandleRv32i for BlockWriter<'_, M>

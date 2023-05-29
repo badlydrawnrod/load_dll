@@ -49,17 +49,11 @@ pub fn main() {
         std::process::exit(1);
     };
 
-    // Output each basic block as Rust code.
+    // Generate a Rust module containing source for each basic block.
     let mut block_writer = BlockWriter::new(&mem);
-    if let Err(err) = block_writer.begin(&mut f) {
-        eprintln!("Failed to preamble: {err}");
+    if let Err(err) = block_writer.write_blocks(&mut f, &blocks) {
+        eprintln!("Failed to write blocks: {err}");
         std::process::exit(1);
-    }
-    for block in &blocks {
-        if let Err(err) = block_writer.write_block(&mut f, block) {
-            eprintln!("Failed to write block: {err}");
-            std::process::exit(1);
-        }
     }
 
     if let Err(err) = f.sync_all() {
@@ -67,7 +61,7 @@ pub fn main() {
         std::process::exit(1);
     }
 
-    // Compile it to a .so.
+    // Compile the module to a .so.
     let filename = dir.path().join("demo.rs").to_string_lossy().to_string();
     let mut command = Command::new("rustc");
     let Ok(run) = command
