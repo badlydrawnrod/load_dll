@@ -1,8 +1,6 @@
-use std::ops::{Index, IndexMut};
-
 use arviss::backends::memory::basic::*;
 use arviss::{Address, DispatchRv32ic, HandleRv32c, HandleRv32i};
-
+use std::ops::{Index, IndexMut};
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
