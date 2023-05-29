@@ -8,39 +8,62 @@ use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::process::Command;
 use tempdir::TempDir;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum BlockWriterError {
+    #[error("block writer failed to write: {err}")]
+    WriteFailed {
+        #[from]
+        err: std::io::Error,
+    },
+}
 
 struct BlockWriter<'a, M>
 where
     M: Memory,
 {
+    mem: &'a M,
+    dis: Disassembler,
     pc: Address,
     is_jump: bool,
-    dis: Disassembler,
-    mem: &'a M,
 }
 
 impl<'a, M> BlockWriter<'a, M>
 where
     M: Memory,
 {
-    fn new(pc: Address, mem: &'a M) -> Self {
+    fn new(mem: &'a M) -> Self {
         Self {
-            pc,
-            is_jump: false,
-            dis: Disassembler,
             mem,
+            dis: Disassembler,
+            pc: 0,
+            is_jump: false,
         }
     }
 
-    fn write_block(&mut self, f: &mut File, block: &Block) {
+    fn begin(&mut self, writer: &mut impl Write) -> Result<(), BlockWriterError> {
+        writeln!(writer, "use arviss;")?;
+        writeln!(writer, "use arviss::HandleRv32i;")?;
+        writeln!(writer, "use arviss::platforms::basic::*;")?;
+        writeln!(writer, "use arviss::decoding::Reg;")?;
+        writeln!(writer, "type Cpu = Rv32iCpu::<BasicMem>;")?;
+
+        Ok(())
+    }
+
+    fn write_block(
+        &mut self,
+        writer: &mut impl Write,
+        block: &Block,
+    ) -> Result<(), BlockWriterError> {
         let mut addr = block.start;
-        writeln!(f, "\n#[no_mangle]").unwrap(); // TODO: don't unwrap.
+        writeln!(writer, "\n#[no_mangle]")?;
         writeln!(
-            f,
+            writer,
             "pub extern \"C\" fn block_{:08x}_{:08x}(cpu: &mut Cpu) {{",
             block.start, block.end
-        )
-        .unwrap(); // TODO: don't unwrap.
+        )?;
         while addr < block.end {
             self.is_jump = false;
             self.pc = addr;
@@ -54,26 +77,28 @@ where
             let is_compact = (ins & 3) != 3;
             if is_compact {
                 // Compact instructions are 2 bytes each.
-                writeln!(f, "// {:08x}     {:04x} {}", addr, ins & 0xffff, code).unwrap(); // Don't unwrap.
+                writeln!(writer, "// {:08x}     {:04x} {}", addr, ins & 0xffff, code)?;
                 addr += 2;
             } else {
                 // Regular instructions are 4 bytes each.
-                writeln!(f, "// {:08x} {:08x} {}", addr, ins, code).unwrap(); // Don't unwrap.
+                writeln!(writer, "// {:08x} {:08x} {}", addr, ins, code)?;
                 addr += 4;
             }
             let code = self.dispatch(ins);
-            writeln!(f, "{code}").unwrap(); // TODO: don't unwrap.
+            writeln!(writer, "{code}")?;
 
             if addr >= block.end {
-                writeln!(f, "// Is jump? {} ", self.is_jump).unwrap(); // TODO: don't unwrap
+                writeln!(writer, "// Is jump? {} ", self.is_jump)?;
             }
 
             if addr >= block.end && !self.is_jump {
                 // We only do this for non-jumps, because jumps do it themselves.
-                writeln!(f, "cpu.set_next_pc(0x{addr:08x});").unwrap(); // TODO: don't unwrap
+                writeln!(writer, "cpu.set_next_pc(0x{addr:08x});")?;
             }
         }
-        writeln!(f, "}}").unwrap(); // TODO: don't unwrap.;
+        writeln!(writer, "}}")?;
+
+        Ok(())
     }
 }
 
@@ -981,16 +1006,17 @@ pub fn main() {
         std::process::exit(1);
     };
 
-    writeln!(f, "use arviss;").unwrap();
-    writeln!(f, "use arviss::HandleRv32i;").unwrap();
-    writeln!(f, "use arviss::platforms::basic::*;").unwrap();
-    writeln!(f, "use arviss::decoding::Reg;").unwrap();
-    writeln!(f, "type Cpu = Rv32iCpu::<BasicMem>;").unwrap();
-
     // Output each basic block as Rust code.
-    let mut block_writer = BlockWriter::new(0, &mem);
+    let mut block_writer = BlockWriter::new(&mem);
+    if let Err(err) = block_writer.begin(&mut f) {
+        eprintln!("Failed to preamble: {err}");
+        std::process::exit(1);
+    }
     for block in &blocks {
-        block_writer.write_block(&mut f, block);
+        if let Err(err) = block_writer.write_block(&mut f, block) {
+            eprintln!("Failed to write block: {err}");
+            std::process::exit(1);
+        }
     }
 
     if let Err(err) = f.sync_all() {
@@ -1012,7 +1038,7 @@ pub fn main() {
         .arg("-C")
         .arg("opt-level=2")
         .arg("-C")
-        .arg("strip=debuginfo")
+        .arg("strip=symbols")
         .arg(filename)
         .status() else {
             eprintln!("Failed to compile");
