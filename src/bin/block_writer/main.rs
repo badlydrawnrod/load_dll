@@ -3,6 +3,7 @@ use arviss::Address;
 use arviss::{disassembler::Disassembler, DispatchRv32ic, HandleRv32c, HandleRv32i};
 use libloading::{Library, Symbol};
 use load_dll::block_finder::*;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::process::Command;
@@ -927,7 +928,7 @@ pub fn main() {
     // Output each basic block as Rust code.
     let mut dis = Disassembler;
     let mut block_writer = BlockWriter::new(0);
-    for block in blocks {
+    for block in &blocks {
         let mut addr = block.start;
         writeln!(f, "\n#[no_mangle]").unwrap(); // TODO: don't unwrap.
         writeln!(
@@ -1001,7 +1002,7 @@ pub fn main() {
     type Cpu = Rv32iCpu<BasicMem>;
     type ArvissFunc = extern "C" fn(&mut Cpu);
 
-    let mut cpu = Cpu::new();
+    let mut cpu = Cpu::with_mem(mem);
 
     // Load the library.
     let library_path = dir.path().join("libdemo.so");
@@ -1013,11 +1014,23 @@ pub fn main() {
     unsafe {
         let lib = Library::new(library_path).unwrap();
 
+        let mut block_map = HashMap::new();
+
+        for block in blocks {
+            let symbol = format!("block_{:08x}_{:08x}", block.start, block.end);
+            let run_one: Symbol<ArvissFunc> = lib.get(symbol.as_bytes()).unwrap();
+            block_map.insert(block.start, run_one);
+        }
+
         // Run the compiled code that we loaded from the DLL against our simulator.
-        let run_one: Symbol<ArvissFunc> = lib.get(b"block_00000000_00000024").unwrap();
-        run_one(&mut cpu);
-        cpu.transfer();
-        println!("cpu.pc = {}", cpu.pc());
+        let mut addr: Address = 0;
+        while !cpu.is_trapped() {
+            // println!("cpu.pc = 0x{:08x}", addr);
+            let run_one = block_map.get(&addr).unwrap();
+            run_one(&mut cpu);
+            addr = cpu.transfer();
+        }
+        println!("Trapped at 0x{:08x}", addr);
     }
 
     // Give the user (me) an opportunity to disassemble the binary.
