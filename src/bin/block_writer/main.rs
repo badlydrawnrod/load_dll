@@ -913,7 +913,6 @@ pub fn main() {
 
     // Create a file in that directory.
     let file_path = dir.path().join("demo.rs");
-    println!("Look in {:?} for the generated code", file_path);
     let Ok(mut f) = File::create(file_path) else {
         eprintln!("Failed to create file");
         std::process::exit(1);
@@ -986,7 +985,8 @@ pub fn main() {
         .arg("--crate-type")
         .arg("cdylib")
         .arg("--extern")
-        .arg("arviss=/home/rod/projects/learn_rust/100days/load_dll/target/debug/deps/libarviss-fa3eb26a5be62bea.rlib")
+        .arg("arviss=/home/rod/projects/learn_rust/100days/load_dll/target/release/deps/libarviss-3f92a38f6024ae90.rlib")
+        // .arg("arviss=/home/rod/projects/learn_rust/100days/load_dll/target/debug/deps/libarviss-fa3eb26a5be62bea.rlib")
         .arg("-C")
         .arg("opt-level=2")
         .arg("-C")
@@ -1006,16 +1006,12 @@ pub fn main() {
 
     // Load the library.
     let library_path = dir.path().join("libdemo.so");
-    println!(
-        "Look in {:?} for the generated code and library",
-        dir.path()
-    );
 
     unsafe {
         let lib = Library::new(library_path).unwrap();
 
+        // Load the functions that we previously generated and put them in a map indexed by start address.
         let mut block_map = HashMap::new();
-
         for block in blocks {
             let symbol = format!("block_{:08x}_{:08x}", block.start, block.end);
             let run_one: Symbol<ArvissFunc> = lib.get(symbol.as_bytes()).unwrap();
@@ -1034,6 +1030,10 @@ pub fn main() {
     }
 
     // Give the user (me) an opportunity to disassemble the binary.
+    println!(
+        "Look in {:?} for the generated code and library",
+        dir.path()
+    );
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         println!("{}", line.unwrap());
