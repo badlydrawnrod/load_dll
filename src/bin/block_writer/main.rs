@@ -9,18 +9,78 @@ use std::io::{self, BufRead, Write};
 use std::process::Command;
 use tempdir::TempDir;
 
-struct BlockWriter {
+struct BlockWriter<'a, M>
+where
+    M: Memory,
+{
     pc: Address,
     is_jump: bool,
+    dis: Disassembler,
+    mem: &'a M,
 }
 
-impl BlockWriter {
-    fn new(pc: Address) -> Self {
-        BlockWriter { pc, is_jump: false }
+impl<'a, M> BlockWriter<'a, M>
+where
+    M: Memory,
+{
+    fn new(pc: Address, mem: &'a M) -> Self {
+        Self {
+            pc,
+            is_jump: false,
+            dis: Disassembler,
+            mem,
+        }
+    }
+
+    fn write_block(&mut self, f: &mut File, block: &Block) {
+        let mut addr = block.start;
+        writeln!(f, "\n#[no_mangle]").unwrap(); // TODO: don't unwrap.
+        writeln!(
+            f,
+            "pub extern \"C\" fn block_{:08x}_{:08x}(cpu: &mut Cpu) {{",
+            block.start, block.end
+        )
+        .unwrap(); // TODO: don't unwrap.
+        while addr < block.end {
+            self.is_jump = false;
+            self.pc = addr;
+            let Ok(ins) = self.mem.read32(addr) else {
+                println!("Failed to read memory when compiling 0x{:08x}", addr);
+                std::process::exit(1);
+            };
+
+            // Disassemble it and compile it.
+            let code = self.dis.dispatch(ins);
+            let is_compact = (ins & 3) != 3;
+            if is_compact {
+                // Compact instructions are 2 bytes each.
+                writeln!(f, "// {:08x}     {:04x} {}", addr, ins & 0xffff, code).unwrap(); // Don't unwrap.
+                addr += 2;
+            } else {
+                // Regular instructions are 4 bytes each.
+                writeln!(f, "// {:08x} {:08x} {}", addr, ins, code).unwrap(); // Don't unwrap.
+                addr += 4;
+            }
+            let code = self.dispatch(ins);
+            writeln!(f, "{code}").unwrap(); // TODO: don't unwrap.
+
+            if addr >= block.end {
+                writeln!(f, "// Is jump? {} ", self.is_jump).unwrap(); // TODO: don't unwrap
+            }
+
+            if addr >= block.end && !self.is_jump {
+                // We only do this for non-jumps, because jumps do it themselves.
+                writeln!(f, "cpu.set_next_pc(0x{addr:08x});").unwrap(); // TODO: don't unwrap
+            }
+        }
+        writeln!(f, "}}").unwrap(); // TODO: don't unwrap.;
     }
 }
 
-impl HandleRv32i for BlockWriter {
+impl<'a, M> HandleRv32i for BlockWriter<'_, M>
+where
+    M: Memory,
+{
     type Item = String;
 
     fn illegal(&mut self, ins: u32) -> Self::Item {
@@ -629,7 +689,10 @@ impl HandleRv32i for BlockWriter {
     }
 }
 
-impl HandleRv32c for BlockWriter {
+impl<'a, M> HandleRv32c for BlockWriter<'_, M>
+where
+    M: Memory,
+{
     type Item = String;
 
     fn c_addi4spn(&mut self, rdp: arviss::decoding::Reg, imm: u32) -> Self::Item {
@@ -925,50 +988,9 @@ pub fn main() {
     writeln!(f, "type Cpu = Rv32iCpu::<BasicMem>;").unwrap();
 
     // Output each basic block as Rust code.
-    let mut dis = Disassembler;
-    let mut block_writer = BlockWriter::new(0);
+    let mut block_writer = BlockWriter::new(0, &mem);
     for block in &blocks {
-        let mut addr = block.start;
-        writeln!(f, "\n#[no_mangle]").unwrap(); // TODO: don't unwrap.
-        writeln!(
-            f,
-            "pub extern \"C\" fn block_{:08x}_{:08x}(cpu: &mut Cpu) {{",
-            block.start, block.end
-        )
-        .unwrap(); // TODO: don't unwrap.
-        while addr < block.end {
-            block_writer.is_jump = false;
-            block_writer.pc = addr;
-            let Ok(ins) = mem.read32(addr) else {
-                println!("Failed to read memory when compiling 0x{:08x}", addr);
-                std::process::exit(1);
-            };
-
-            // Disassemble it and compile it.
-            let code = dis.dispatch(ins);
-            let is_compact = (ins & 3) != 3;
-            if is_compact {
-                // Compact instructions are 2 bytes each.
-                writeln!(f, "// {:08x}     {:04x} {}", addr, ins & 0xffff, code).unwrap(); // Don't unwrap.
-                addr += 2;
-            } else {
-                // Regular instructions are 4 bytes each.
-                writeln!(f, "// {:08x} {:08x} {}", addr, ins, code).unwrap(); // Don't unwrap.
-                addr += 4;
-            }
-            let code = block_writer.dispatch(ins);
-            writeln!(f, "{code}").unwrap(); // TODO: don't unwrap.
-
-            if addr >= block.end {
-                writeln!(f, "// Is jump? {} ", block_writer.is_jump).unwrap(); // TODO: don't unwrap
-            }
-
-            if addr >= block.end && !block_writer.is_jump {
-                // We only do this for non-jumps, because jumps do it themselves.
-                writeln!(f, "cpu.set_next_pc(0x{addr:08x});").unwrap(); // TODO: don't unwrap
-            }
-        }
-        writeln!(f, "}}").unwrap(); // TODO: don't unwrap.;
+        block_writer.write_block(&mut f, block);
     }
 
     if let Err(err) = f.sync_all() {
