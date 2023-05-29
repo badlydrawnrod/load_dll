@@ -83,36 +83,34 @@ pub fn main() {
         };
     assert!(run.success());
 
-    // Create a simulator.
     type Cpu = Rv32iCpu<BasicMem>;
     type ArvissFunc = extern "C" fn(&mut Cpu);
 
-    let mut cpu = Cpu::with_mem(mem);
-
     // Load the library.
     let library_path = dir.path().join("libdemo.so");
+    let lib = unsafe { Library::new(library_path).unwrap() };
 
-    unsafe {
-        let lib = Library::new(library_path).unwrap();
-
-        // Load the functions that we previously generated and put them in a map indexed by start address.
+    // Load the functions from the library.
+    let block_map = unsafe {
         let mut block_map = HashMap::new();
         for block in blocks {
             let symbol = format!("block_{:08x}_{:08x}", block.start, block.end);
-            let run_one: Symbol<ArvissFunc> = lib.get(symbol.as_bytes()).unwrap();
-            block_map.insert(block.start, run_one);
+            let basic_block_fn: Symbol<ArvissFunc> = lib.get(symbol.as_bytes()).unwrap();
+            block_map.insert(block.start, basic_block_fn);
         }
+        block_map
+    };
 
-        // Run the compiled code that we loaded from the DLL against our simulator.
-        let mut addr: Address = 0;
-        while !cpu.is_trapped() {
-            // println!("cpu.pc = 0x{:08x}", addr);
-            let run_one = block_map.get(&addr).unwrap();
-            run_one(&mut cpu);
-            addr = cpu.transfer();
-        }
-        println!("Trapped at 0x{:08x}", addr);
+    // Create a simulator and run it by calling the functions.
+    let mut addr: Address = 0;
+    let mut cpu = Cpu::with_mem(mem);
+    while !cpu.is_trapped() {
+        // TODO: Fall back to interpreting if we can't find a basic block in the map.
+        let run_one = block_map.get(&addr).unwrap();
+        run_one(&mut cpu);
+        addr = cpu.transfer();
     }
+    println!("Trapped at 0x{:08x}", addr);
 
     // Give the user (me) an opportunity to disassemble the binary.
     println!(
