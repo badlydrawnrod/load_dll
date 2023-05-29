@@ -15,9 +15,6 @@ type ArvissFunc = extern "C" fn(&mut Cpu);
 struct Compiler {
     temp_dir: TempDir,
     libs: Vec<Library>,
-}
-
-struct Compilation {
     block_map: HashMap<Address, ArvissFunc>,
 }
 
@@ -26,10 +23,15 @@ impl Compiler {
         Self {
             temp_dir: dir,
             libs: Vec::new(),
+            block_map: HashMap::new(),
         }
     }
 
-    fn compile<'a>(&mut self, image: &[u8]) -> Option<Compilation> {
+    fn get(&self, addr: Address) -> Option<&ArvissFunc> {
+        self.block_map.get(&addr)
+    }
+
+    fn compile<'a>(&mut self, image: &[u8]) {
         // Copy the image into memory.
         let mut mem = BasicMem::new();
         if let Err(addr) = mem.write_bytes(0, image) {
@@ -104,16 +106,15 @@ impl Compiler {
             for block in blocks {
                 let symbol = format!("block_{:08x}_{:08x}", block.start, block.end);
                 let basic_block_fn: Symbol<ArvissFunc> = lib.get(symbol.as_bytes()).unwrap();
-                let basic_block_fn: ArvissFunc = *basic_block_fn;
+                let basic_block_fn = *basic_block_fn;
                 block_map.insert(block.start, basic_block_fn);
             }
             block_map
         };
 
-        // The compiler owns the library.
+        // The compiler owns the library and the mappings.
+        self.block_map.extend(block_map);
         self.libs.push(lib);
-
-        Some(Compilation { block_map })
     }
 }
 
@@ -138,7 +139,7 @@ pub fn main() {
         std::process::exit(1);
     };
     let image = file_data.as_slice();
-    let compiled_code = compiler.compile(&image).unwrap();
+    compiler.compile(&image);
 
     // Copy the image into simulator memory.
     let mut mem = BasicMem::new();
@@ -155,7 +156,7 @@ pub fn main() {
     while !cpu.is_trapped() {
         // TODO: Fall back to interpreting if we can't find a basic block in the map ... or compilation if
         // we're feeling adventurous.
-        let run_one = compiled_code.block_map.get(&addr).unwrap();
+        let run_one = compiler.get(addr).unwrap();
         run_one(&mut cpu);
         addr = cpu.transfer();
     }
