@@ -138,7 +138,7 @@ pub fn main() {
     let compiler = Compiler::new(dir);
     let compilation = compiler.compile(&image).unwrap();
 
-    // Copy the image into memory.
+    // Copy the image into simulator memory.
     let mut mem = BasicMem::new();
     if let Err(addr) = mem.write_bytes(0, image) {
         eprintln!("Failed to initialize memory at: 0x{:08x}", addr);
