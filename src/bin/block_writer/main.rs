@@ -1,4 +1,5 @@
 use arviss::platforms::basic::*;
+use arviss::Address;
 use arviss::{disassembler::Disassembler, DispatchRv32ic, HandleRv32c, HandleRv32i};
 use libloading::{Library, Symbol};
 use load_dll::block_finder::*;
@@ -7,7 +8,16 @@ use std::io::{self, BufRead, Write};
 use std::process::Command;
 use tempdir::TempDir;
 
-struct BlockWriter {}
+struct BlockWriter {
+    pc: Address,
+    is_jump: bool,
+}
+
+impl BlockWriter {
+    fn new(pc: Address) -> Self {
+        BlockWriter { pc, is_jump: false }
+    }
+}
 
 impl HandleRv32i for BlockWriter {
     type Item = String;
@@ -26,12 +36,17 @@ impl HandleRv32i for BlockWriter {
         rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
         if cpu.rx({rs1}) == cpu.rx({rs2}) {{
-            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
+            cpu.set_next_pc(0x{:08x});
+        }} else {{
+            cpu.set_next_pc(0x{:08x});
         }}
-        "#
+        "#,
+            self.pc.wrapping_add(bimm),
+            self.pc.wrapping_add(4)
         )
     }
 
@@ -41,12 +56,17 @@ impl HandleRv32i for BlockWriter {
         rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
         if cpu.rx({rs1}) != cpu.rx({rs2}) {{
-            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
+            cpu.set_next_pc(0x{:08x});
+        }} else {{
+            cpu.set_next_pc(0x{:08x});
         }}
-        "#
+        "#,
+            self.pc.wrapping_add(bimm),
+            self.pc.wrapping_add(4)
         )
     }
 
@@ -56,12 +76,17 @@ impl HandleRv32i for BlockWriter {
         rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
         if (cpu.rx({rs1}) as i32) < (cpu.rx({rs2}) as i32) {{
-            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
+            cpu.set_next_pc(0x{:08x});
+        }} else {{
+            cpu.set_next_pc(0x{:08x});
         }}
-        "#
+        "#,
+            self.pc.wrapping_add(bimm),
+            self.pc.wrapping_add(4)
         )
     }
 
@@ -71,12 +96,17 @@ impl HandleRv32i for BlockWriter {
         rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
         if (cpu.rx({rs1}) as i32) >= (cpu.rx({rs2}) as i32) {{
-            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
+            cpu.set_next_pc(0x{:08x});
+        }} else {{
+            cpu.set_next_pc(0x{:08x});
         }}
-        "#
+        "#,
+            self.pc.wrapping_add(bimm),
+            self.pc.wrapping_add(4)
         )
     }
 
@@ -86,12 +116,17 @@ impl HandleRv32i for BlockWriter {
         rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
         if cpu.rx({rs1}) < cpu.rx({rs2}) {{
-            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
+            cpu.set_next_pc(0x{:08x});
+        }} else {{
+            cpu.set_next_pc(0x{:08x});
         }}
-        "#
+        "#,
+            self.pc.wrapping_add(bimm),
+            self.pc.wrapping_add(4)
         )
     }
 
@@ -101,12 +136,17 @@ impl HandleRv32i for BlockWriter {
         rs2: arviss::decoding::Reg,
         bimm: u32,
     ) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
         if cpu.rx({rs1}) >= cpu.rx({rs2}) {{
-            cpu.set_next_pc(cpu.pc().wrapping_add({bimm}));
+            cpu.set_next_pc(0x{:08x});
+        }} else {{
+            cpu.set_next_pc(0x{:08x});
         }}
-        "#
+        "#,
+            self.pc.wrapping_add(bimm),
+            self.pc.wrapping_add(4)
         )
     }
 
@@ -295,12 +335,14 @@ impl HandleRv32i for BlockWriter {
         rs1: arviss::decoding::Reg,
         iimm: u32,
     ) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
             let rs1_before = cpu.rx({rs1}); // Because rd and rs1 might be the same register.
-            cpu.wx({rd}, cpu.pc().wrapping_add(4));
+            cpu.wx({rd}, 0x{:08x});
             cpu.set_next_pc(rs1_before.wrapping_add({iimm}) & !1);
-        "#
+        "#,
+            self.pc.wrapping_add(4),
         )
     }
 
@@ -357,8 +399,9 @@ impl HandleRv32i for BlockWriter {
     fn auipc(&mut self, rd: arviss::decoding::Reg, uimm: u32) -> Self::Item {
         format!(
             r#"
-            cpu.wx({rd}, cpu.pc().wrapping_add({uimm}));
-        "#
+            cpu.wx({rd}, 0x{:08x});
+        "#,
+            self.pc.wrapping_add(uimm)
         )
     }
 
@@ -371,11 +414,14 @@ impl HandleRv32i for BlockWriter {
     }
 
     fn jal(&mut self, rd: arviss::decoding::Reg, jimm: u32) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
-            cpu.wx({rd}, cpu.pc().wrapping_add(4));
-            cpu.set_next_pc(cpu.pc().wrapping_add({jimm}));   
-        "#
+            cpu.wx({rd}, 0x{:08x});
+            cpu.set_next_pc(0x{:08x});   
+        "#,
+            self.pc.wrapping_add(4),
+            self.pc.wrapping_add(jimm)
         )
     }
 
@@ -696,30 +742,47 @@ impl HandleRv32c for BlockWriter {
     }
 
     fn c_j(&mut self, imm: u32) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
-            cpu.set_next_pc(cpu.pc().wrapping_add({imm}));            
-        "#
+            cpu.set_next_pc(0x{:08x});
+        "#,
+            self.pc.wrapping_add(imm)
         )
     }
 
     fn c_beqz(&mut self, rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
-            cpu.beq({rs1p}, Reg::ZERO, {imm});
-        "#
+        if cpu.rx({rs1p}) == 0 {{
+            cpu.set_next_pc(0x{:08x});
+        }} else {{
+            cpu.set_next_pc(0x{:08x});
+        }}
+        "#,
+            self.pc.wrapping_add(imm),
+            self.pc.wrapping_add(2)
         )
     }
 
     fn c_bnez(&mut self, rs1p: arviss::decoding::Reg, imm: u32) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
-            cpu.bne({rs1p}, Reg::ZERO, {imm});
-        "#
+        if cpu.rx({rs1p}) != 0 {{
+            cpu.set_next_pc(0x{:08x});
+        }} else {{
+            cpu.set_next_pc(0x{:08x});
+        }}
+        "#,
+            self.pc.wrapping_add(imm),
+            self.pc.wrapping_add(2)
         )
     }
 
     fn c_jr(&mut self, rs1n0: arviss::decoding::Reg) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
             cpu.set_next_pc(cpu.rx({rs1n0}) & !1);
@@ -728,12 +791,13 @@ impl HandleRv32c for BlockWriter {
     }
 
     fn c_jalr(&mut self, rs1n0: arviss::decoding::Reg) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
-            cpu.wx(Reg::RA, cpu.pc().wrapping_add(2));
+            cpu.wx(Reg::RA, 0x{:08x});
             cpu.set_next_pc(cpu.rx({rs1n0}) & !1);
-    
-        "#
+            "#,
+            self.pc.wrapping_add(2)
         )
     }
 
@@ -778,11 +842,13 @@ impl HandleRv32c for BlockWriter {
     }
 
     fn c_jal(&mut self, imm: u32) -> Self::Item {
+        self.is_jump = true;
         format!(
             r#"
-            cpu.wx(Reg::RA, cpu.pc().wrapping_add(2));
-            cpu.set_next_pc(cpu.pc().wrapping_add({imm}));
-        "#
+            cpu.wx(Reg::RA, {0}.wrapping_add(2));
+            cpu.set_next_pc(0x{:08x});
+        "#,
+            self.pc.wrapping_add(imm)
         )
     }
 
@@ -860,7 +926,7 @@ pub fn main() {
 
     // Output each basic block as Rust code.
     let mut dis = Disassembler;
-    let mut block_writer = BlockWriter {};
+    let mut block_writer = BlockWriter::new(0);
     for block in blocks {
         let mut addr = block.start;
         writeln!(f, "\n#[no_mangle]").unwrap(); // TODO: don't unwrap.
@@ -871,6 +937,8 @@ pub fn main() {
         )
         .unwrap(); // TODO: don't unwrap.
         while addr < block.end {
+            block_writer.is_jump = false;
+            block_writer.pc = addr;
             let Ok(ins) = mem.read32(addr) else {
                 println!("Failed to read memory when compiling 0x{:08x}", addr);
                 std::process::exit(1);
@@ -890,6 +958,15 @@ pub fn main() {
             }
             let code = block_writer.dispatch(ins);
             writeln!(f, "{code}").unwrap(); // TODO: don't unwrap.
+
+            if addr >= block.end {
+                writeln!(f, "// Is jump? {} ", block_writer.is_jump).unwrap(); // TODO: don't unwrap
+            }
+
+            if addr >= block.end && !block_writer.is_jump {
+                // We only do this for non-jumps, because jumps do it themselves.
+                writeln!(f, "cpu.set_next_pc(0x{addr:08x});").unwrap(); // TODO: don't unwrap
+            }
         }
         writeln!(f, "}}").unwrap(); // TODO: don't unwrap.;
     }
@@ -921,7 +998,7 @@ pub fn main() {
     assert!(run.success());
 
     // Create a simulator.
-    type Cpu = Rv32iCpu::<BasicMem>;
+    type Cpu = Rv32iCpu<BasicMem>;
     type ArvissFunc = extern "C" fn(&mut Cpu);
 
     let mut cpu = Cpu::new();
@@ -939,6 +1016,7 @@ pub fn main() {
         // Run the compiled code that we loaded from the DLL against our simulator.
         let run_one: Symbol<ArvissFunc> = lib.get(b"block_00000000_00000024").unwrap();
         run_one(&mut cpu);
+        cpu.transfer();
         println!("cpu.pc = {}", cpu.pc());
     }
 
