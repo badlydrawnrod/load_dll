@@ -9,6 +9,7 @@ edition = "2021"
 libloading = "0.8"
 tempdir = "0.3"
 arviss = { path = "../arviss_experiment" }
+thiserror = "1.0.40"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["lib", "cdylib"]
