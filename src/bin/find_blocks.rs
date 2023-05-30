@@ -12,22 +12,22 @@ pub fn main() {
     };
     let image = file_data.as_slice();
 
-    // Copy the image into memory.
-    let mut mem = BasicMem::new();
-    if let Err(addr) = mem.write_bytes(0, image) {
-        eprintln!("Failed to initialize memory at: 0x{:08x}", addr);
-        std::process::exit(1);
-    };
-
     // Find the basic blocks in the image.
     let text_size = image.len() - 4; // TODO: The image needs to tell us how big its text and initialized data are.
-    let mut block_finder = BlockFinder::<BasicMem>::with_mem(&mem, text_size);
+    let mut block_finder = BlockFinder::with_mem(&image[..text_size]);
     let blocks = match block_finder.find_blocks(0) {
         Ok(blocks) => blocks,
         Err(err) => {
             eprintln!("ERROR: {}", err);
             std::process::exit(1);
         }
+    };
+
+    // Copy the image into memory.
+    let mut mem = BasicMem::new();
+    if let Err(addr) = mem.write_bytes(0, image) {
+        eprintln!("Failed to initialize memory at: 0x{:08x}", addr);
+        std::process::exit(1);
     };
 
     // Disassemble each block for visual evidence that it's working.

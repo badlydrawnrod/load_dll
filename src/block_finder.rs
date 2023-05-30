@@ -1,4 +1,3 @@
-use arviss::backends::memory::basic::*;
 use arviss::{Address, DispatchRv32ic, HandleRv32c, HandleRv32i};
 use std::ops::{Index, IndexMut};
 use thiserror::Error;
@@ -20,13 +19,9 @@ impl Block {
     }
 }
 
-pub struct BlockFinder<'a, M>
-where
-    M: Memory,
-{
+pub struct BlockFinder<'a> {
     addr: Address,
-    mem: &'a M,
-    eom: Address,
+    mem: &'a [u8],
     known_blocks: Vec<Block>,
     open_blocks: Vec<usize>,
     current_block: usize,
@@ -38,32 +33,37 @@ pub enum BlockFinderError {
     MemoryReadFailed { addr: Address },
 }
 
-impl<'a, M> BlockFinder<'a, M>
-where
-    M: Memory,
-{
-    pub fn with_mem(mem: &'a M, len: usize) -> Self {
-        let addr = 0;
-        let eom = addr + (len as Address);
+impl<'a> BlockFinder<'a> {
+    pub fn with_mem(mem: &'a [u8]) -> Self {
         Self {
             addr: 0,
             mem,
-            eom,
             known_blocks: Vec::new(),
             open_blocks: Vec::new(),
             current_block: 0,
         }
     }
 
-    fn next(&mut self) -> Result<Address, BlockFinderError> {
-        self.mem
-            .read32(self.addr)
-            .map_err(|e| BlockFinderError::MemoryReadFailed { addr: e })
+    fn next(&mut self) -> Result<u32, BlockFinderError> {
+        let addr = self.addr as usize;
+        if (0..self.mem.len() - 3).contains(&addr) {
+            if let Ok(slice) = &self.mem[addr..addr + 4].try_into() {
+                let result = u32::from_le_bytes(*slice);
+                return Ok(result);
+            }
+        } else if (0..self.mem.len() - 1).contains(&addr) {
+            // Cater for a 16-bit instruction in the last two bytes of the image.
+            if let Ok(slice) = &self.mem[addr..addr + 2].try_into() {
+                let result = (u16::from_le_bytes(*slice)) as u32;
+                return Ok(result);
+            }
+        }
+        Err(BlockFinderError::MemoryReadFailed { addr: self.addr })
     }
 
     fn start_block(&mut self, addr: Address) {
         // Ignore addresses that are outside of the address range.
-        if addr >= self.eom {
+        if addr as usize >= self.mem.len() {
             return;
         }
 
@@ -98,7 +98,7 @@ where
             self.current_block = current_block;
             let mut block = self.known_blocks.index(self.current_block);
             self.addr = block.start;
-            while self.addr < self.eom && block.end == OPEN_BLOCK_SENTINEL {
+            while (self.addr as usize) < self.mem.len() && block.end == OPEN_BLOCK_SENTINEL {
                 let ins = self.next()?;
                 self.dispatch(ins);
                 let instruction_size = if (ins & 3) == 3 { 4 } else { 2 };
@@ -127,10 +127,7 @@ where
     }
 }
 
-impl<M> HandleRv32i for BlockFinder<'_, M>
-where
-    M: Memory,
-{
+impl HandleRv32i for BlockFinder<'_> {
     type Item = ();
 
     fn illegal(&mut self, _ins: u32) -> Self::Item {}
@@ -439,10 +436,7 @@ where
     }
 }
 
-impl<M> HandleRv32c for BlockFinder<'_, M>
-where
-    M: Memory,
-{
+impl HandleRv32c for BlockFinder<'_> {
     type Item = ();
 
     fn c_addi4spn(&mut self, _rdp: arviss::decoding::Reg, _imm: u32) -> Self::Item {}
