@@ -32,16 +32,8 @@ impl Compiler {
     }
 
     fn compile<'a>(&mut self, image: &[u8]) {
-        // Copy the image into memory.
-        let mut mem = BasicMem::new();
-        if let Err(addr) = mem.write_bytes(0, image) {
-            eprintln!("Failed to initialize memory at: 0x{:08x}", addr);
-            std::process::exit(1);
-        };
-
         // Find the basic blocks in the image.
-        let text_size = image.len() - 4; // TODO: The image needs to tell us how big its text and initialized data are.
-        let mut block_finder = BlockFinder::<BasicMem>::with_mem(&mem, text_size);
+        let mut block_finder = BlockFinder::with_mem(image);
         let blocks = match block_finder.find_blocks(0) {
             Ok(blocks) => blocks,
             Err(err) => {
@@ -54,6 +46,13 @@ impl Compiler {
         let file_path = self.temp_dir.path().join("demo.rs");
         let Ok(mut f) = File::create(file_path) else {
             eprintln!("Failed to create file");
+            std::process::exit(1);
+        };
+
+        // Copy the image into memory.
+        let mut mem = BasicMem::new();
+        if let Err(addr) = mem.write_bytes(0, image) {
+            eprintln!("Failed to initialize memory at: 0x{:08x}", addr);
             std::process::exit(1);
         };
 
@@ -139,7 +138,8 @@ pub fn main() {
         std::process::exit(1);
     };
     let image = file_data.as_slice();
-    compiler.compile(&image);
+    let text_size = image.len() - 4; // TODO: The image needs to tell us how big its text and initialized data are.
+    compiler.compile(&image[0..text_size]);
 
     // Copy the image into simulator memory.
     let mut mem = BasicMem::new();
