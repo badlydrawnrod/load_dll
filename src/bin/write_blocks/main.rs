@@ -31,7 +31,7 @@ impl Compiler {
         self.block_map.get(&addr)
     }
 
-    fn compile<'a>(&mut self, image: &[u8]) {
+    fn compile(&mut self, image: &[u8]) {
         // Find the basic blocks in the image.
         let mut block_finder = BlockFinder::with_mem(image);
         let blocks = match block_finder.find_blocks(0) {

@@ -112,14 +112,14 @@ impl<'a> BlockWriter<'a> {
     ) -> Result<(), BlockWriterError> {
         self.begin(writer)?;
         for block in blocks {
-            self.write_block(writer, &block)?;
+            self.write_block(writer, block)?;
         }
 
         Ok(())
     }
 }
 
-impl<'a> HandleRv32i for BlockWriter<'_> {
+impl HandleRv32i for BlockWriter<'_> {
     type Item = String;
 
     fn illegal(&mut self, ins: u32) -> Self::Item {
@@ -712,23 +712,21 @@ impl<'a> HandleRv32i for BlockWriter<'_> {
     }
 
     fn ecall(&mut self) -> Self::Item {
-        format!(
-            r#"
+        r#"
             cpu.handle_ecall();
         "#
-        )
+        .to_string()
     }
 
     fn ebreak(&mut self) -> Self::Item {
-        format!(
-            r#"
+        r#"
             cpu.handle_ebreak();
         "#
-        )
+        .to_string()
     }
 }
 
-impl<'a> HandleRv32c for BlockWriter<'_> {
+impl HandleRv32c for BlockWriter<'_> {
     type Item = String;
 
     fn c_addi4spn(&mut self, rdp: arviss::decoding::Reg, imm: u32) -> Self::Item {
@@ -902,11 +900,10 @@ impl<'a> HandleRv32c for BlockWriter<'_> {
     }
 
     fn c_ebreak(&mut self) -> Self::Item {
-        format!(
-            r#"
+        r#"
             cpu.ebreak();
         "#
-        )
+        .to_string()
     }
 
     fn c_mv(&mut self, rd: arviss::decoding::Reg, rs2n0: arviss::decoding::Reg) -> Self::Item {
