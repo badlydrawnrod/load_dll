@@ -49,15 +49,8 @@ impl Compiler {
             std::process::exit(1);
         };
 
-        // Copy the image into memory.
-        let mut mem = BasicMem::new();
-        if let Err(addr) = mem.write_bytes(0, image) {
-            eprintln!("Failed to initialize memory at: 0x{:08x}", addr);
-            std::process::exit(1);
-        };
-
         // Generate a Rust module containing source for each basic block.
-        let mut block_writer = BlockWriter::new(&mem);
+        let mut block_writer = BlockWriter::new(image);
         if let Err(err) = block_writer.write_blocks(&mut f, &blocks) {
             eprintln!("Failed to write blocks: {err}");
             std::process::exit(1);

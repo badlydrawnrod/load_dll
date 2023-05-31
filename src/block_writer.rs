@@ -1,12 +1,13 @@
 use crate::block_finder::*;
-use arviss::platforms::basic::*;
-use arviss::Address;
-use arviss::{disassembler::Disassembler, DispatchRv32ic, HandleRv32c, HandleRv32i};
+use arviss::{disassembler::Disassembler, Address, DispatchRv32ic, HandleRv32c, HandleRv32i};
 use std::io::Write;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum BlockWriterError {
+    #[error("failed to read memory when compiling 0x{addr:08x}")]
+    ReadFailed { addr: Address },
+
     #[error("block writer failed to write: {err}")]
     WriteFailed {
         #[from]
@@ -14,21 +15,15 @@ pub enum BlockWriterError {
     },
 }
 
-pub struct BlockWriter<'a, M>
-where
-    M: Memory,
-{
-    mem: &'a M,
+pub struct BlockWriter<'a> {
+    mem: &'a [u8],
     dis: Disassembler,
     pc: Address,
     is_jump: bool,
 }
 
-impl<'a, M> BlockWriter<'a, M>
-where
-    M: Memory,
-{
-    pub fn new(mem: &'a M) -> Self {
+impl<'a> BlockWriter<'a> {
+    pub fn new(mem: &'a [u8]) -> Self {
         Self {
             mem,
             dis: Disassembler,
@@ -47,6 +42,23 @@ where
         Ok(())
     }
 
+    fn read32(&self, addr: Address) -> Result<u32, BlockWriterError> {
+        let index = addr as usize;
+        if (0..self.mem.len() - 3).contains(&index) {
+            if let Ok(slice) = &self.mem[index..index + 4].try_into() {
+                let result = u32::from_le_bytes(*slice);
+                return Ok(result);
+            }
+        } else if (0..self.mem.len() - 1).contains(&index) {
+            // Cater for a 16-bit instruction in the last two bytes of the image.
+            if let Ok(slice) = &self.mem[index..index + 2].try_into() {
+                let result = (u16::from_le_bytes(*slice)) as u32;
+                return Ok(result);
+            }
+        }
+        Err(BlockWriterError::ReadFailed { addr })
+    }
+
     pub fn write_block(
         &mut self,
         writer: &mut impl Write,
@@ -62,10 +74,7 @@ where
         while addr < block.end {
             self.is_jump = false;
             self.pc = addr;
-            let Ok(ins) = self.mem.read32(addr) else {
-                println!("Failed to read memory when compiling 0x{:08x}", addr);
-                std::process::exit(1);
-            };
+            let ins = self.read32(addr)?;
 
             // Disassemble it and compile it.
             let code = self.dis.dispatch(ins);
@@ -110,10 +119,7 @@ where
     }
 }
 
-impl<'a, M> HandleRv32i for BlockWriter<'_, M>
-where
-    M: Memory,
-{
+impl<'a> HandleRv32i for BlockWriter<'_> {
     type Item = String;
 
     fn illegal(&mut self, ins: u32) -> Self::Item {
@@ -722,10 +728,7 @@ where
     }
 }
 
-impl<'a, M> HandleRv32c for BlockWriter<'_, M>
-where
-    M: Memory,
-{
+impl<'a> HandleRv32c for BlockWriter<'_> {
     type Item = String;
 
     fn c_addi4spn(&mut self, rdp: arviss::decoding::Reg, imm: u32) -> Self::Item {
