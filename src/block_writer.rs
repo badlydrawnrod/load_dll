@@ -1,4 +1,5 @@
 use crate::block_finder::*;
+use crate::read_instruction::*;
 use arviss::{disassembler::Disassembler, Address, DispatchRv32ic, HandleRv32c, HandleRv32i};
 use std::io::Write;
 use thiserror::Error;
@@ -42,21 +43,9 @@ impl<'a> BlockWriter<'a> {
         Ok(())
     }
 
-    fn read32(&self, addr: Address) -> Result<u32, BlockWriterError> {
-        let index = addr as usize;
-        if (0..self.mem.len() - 3).contains(&index) {
-            if let Ok(slice) = &self.mem[index..index + 4].try_into() {
-                let result = u32::from_le_bytes(*slice);
-                return Ok(result);
-            }
-        } else if (0..self.mem.len() - 1).contains(&index) {
-            // Cater for a 16-bit instruction in the last two bytes of the image.
-            if let Ok(slice) = &self.mem[index..index + 2].try_into() {
-                let result = (u16::from_le_bytes(*slice)) as u32;
-                return Ok(result);
-            }
-        }
-        Err(BlockWriterError::ReadFailed { addr })
+    #[inline]
+    fn instruction_at(&self, addr: Address) -> Result<u32, BlockWriterError> {
+        read_instruction(self.mem, addr).map_err(|addr| BlockWriterError::ReadFailed { addr })
     }
 
     pub fn write_block(
@@ -74,7 +63,7 @@ impl<'a> BlockWriter<'a> {
         while addr < block.end {
             self.is_jump = false;
             self.pc = addr;
-            let ins = self.read32(addr)?;
+            let ins = self.instruction_at(addr)?;
 
             // Disassemble it and compile it.
             let code = self.dis.dispatch(ins);

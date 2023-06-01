@@ -1,3 +1,4 @@
+use crate::read_instruction::*;
 use arviss::{Address, DispatchRv32ic, HandleRv32c, HandleRv32i};
 use std::ops::{Index, IndexMut};
 use thiserror::Error;
@@ -44,21 +45,10 @@ impl<'a> BlockFinder<'a> {
         }
     }
 
-    fn next(&mut self) -> Result<u32, BlockFinderError> {
-        let addr = self.addr as usize;
-        if (0..self.mem.len() - 3).contains(&addr) {
-            if let Ok(slice) = &self.mem[addr..addr + 4].try_into() {
-                let result = u32::from_le_bytes(*slice);
-                return Ok(result);
-            }
-        } else if (0..self.mem.len() - 1).contains(&addr) {
-            // Cater for a 16-bit instruction in the last two bytes of the image.
-            if let Ok(slice) = &self.mem[addr..addr + 2].try_into() {
-                let result = (u16::from_le_bytes(*slice)) as u32;
-                return Ok(result);
-            }
-        }
-        Err(BlockFinderError::MemoryReadFailed { addr: self.addr })
+    #[inline]
+    fn next_instruction(&mut self) -> Result<u32, BlockFinderError> {
+        read_instruction(self.mem, self.addr)
+            .map_err(|addr| BlockFinderError::MemoryReadFailed { addr })
     }
 
     fn start_block(&mut self, addr: Address) {
@@ -99,7 +89,7 @@ impl<'a> BlockFinder<'a> {
             let mut block = self.known_blocks.index(self.current_block);
             self.addr = block.start;
             while (self.addr as usize) < self.mem.len() && block.end == OPEN_BLOCK_SENTINEL {
-                let ins = self.next()?;
+                let ins = self.next_instruction()?;
                 self.dispatch(ins);
                 let instruction_size = if (ins & 3) == 3 { 4 } else { 2 };
                 self.addr = self.addr.wrapping_add(instruction_size);
