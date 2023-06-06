@@ -94,11 +94,14 @@ impl Compiler {
         // Load the functions from the library.
         let block_map = unsafe {
             let mut block_map = HashMap::new();
-            for block in blocks {
+            for (index, block) in blocks.iter().enumerate() {
+                // Deliberately skip blocks.
                 let symbol = format!("block_{:08x}_{:08x}", block.start, block.end);
-                let basic_block_fn: Symbol<ArvissFunc> = lib.get(symbol.as_bytes()).unwrap();
-                let basic_block_fn = *basic_block_fn;
-                block_map.insert(block.start, basic_block_fn);
+                if index % 16 != 15 {
+                    let basic_block_fn: Symbol<ArvissFunc> = lib.get(symbol.as_bytes()).unwrap();
+                    let basic_block_fn = *basic_block_fn;
+                    block_map.insert(block.start, basic_block_fn);
+                }
             }
             block_map
         };
