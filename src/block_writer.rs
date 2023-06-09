@@ -34,7 +34,6 @@ impl<'a> BlockWriter<'a> {
     }
 
     pub fn begin(&mut self, writer: &mut impl Write) -> Result<(), BlockWriterError> {
-        writeln!(writer, "use arviss;")?;
         writeln!(writer, "use arviss::HandleRv32i;")?;
         writeln!(writer, "use arviss::platforms::basic::*;")?;
         writeln!(writer, "use arviss::decoding::Reg;")?;
