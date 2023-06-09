@@ -1,10 +1,9 @@
-mod compiler;
+mod fallback_compiler;
 
-use compiler::*;
+use fallback_compiler::*;
 
 use arviss::Address;
 use arviss::{platforms::basic::*, DispatchRv32ic};
-use std::io::{self, BufRead};
 use tempdir::TempDir;
 
 pub fn main() {
@@ -18,8 +17,9 @@ pub fn main() {
         dir.path()
     );
 
-    // Create the compiler.
-    let mut compiler = Compiler::new(dir);
+    // Create the compiler. This particular compiler does not load everything as we're using it to test falling back to
+    // interpreting.
+    let mut compiler = FallbackCompiler::new(dir);
 
     // Load the image into a buffer and compile it.
     let path = "images/hello_world.rv32ic";
@@ -28,7 +28,8 @@ pub fn main() {
         std::process::exit(1);
     };
     let image = file_data.as_slice();
-    let text_size = image.len() - 4; // TODO: The image needs to tell us how big its text and initialized data are.
+    let text_size = image.len() - 4;
+
     compiler.compile(&image[0..text_size]);
 
     // Copy the image into simulator memory.
@@ -38,33 +39,27 @@ pub fn main() {
         std::process::exit(1);
     };
 
-    // TODO: What if we have multiple images?
-
-    // Create a simulator and run it by calling the compiled functions.
+    // Create a simulator and run it by calling the compiled functions, falling back to interpreting when we don't know
+    // about the given basic block.
     let mut addr: Address = 0;
     let mut cpu = Cpu::with_mem(mem);
 
-    // TODO: there's a bug somewhere in this loop that causes it to skip instructions when switching between native
-    // code and interpreting, or vice versa. Probably the latter but I haven't spotted it yet. Disassembly may help.
     while !cpu.is_trapped() {
-        // Fall back to interpreting if we can't find a basic block in the map.
         match compiler.get(addr) {
+            // Basic block found. Call the native code.
             Some(func) => {
                 func(&mut cpu);
                 addr = cpu.transfer();
             }
+            // Basic block not found. Fall back to interpreting.
             None => {
-                // println!("Fallback at: 0x{:08x}", addr);
-
                 while !cpu.is_trapped() {
                     // Fetch.
                     let ins = cpu.fetch().unwrap();
-                    if let Some(_) = compiler.get(cpu.pc()) {
+                    if compiler.get(cpu.pc()).is_some() {
                         addr = cpu.pc();
-                        // println!("  Native at: 0x{:08x}", addr);
                         break;
                     }
-
                     // Decode and dispatch.
                     cpu.dispatch(ins);
                 }
@@ -78,11 +73,5 @@ pub fn main() {
         }
         Some(cause) => println!("{:?} at 0x{:08x}", cause, cpu.pc()),
         None => unreachable!(),
-    }
-
-    // Give the user (me) an opportunity to disassemble the binary.
-    let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        println!("{}", line.unwrap());
     }
 }

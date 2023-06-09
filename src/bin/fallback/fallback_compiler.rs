@@ -11,13 +11,13 @@ use tempdir::TempDir;
 pub type Cpu = Rv32iCpu<BasicMem>;
 pub type ArvissFunc = extern "C" fn(&mut Cpu);
 
-pub struct Compiler {
+pub struct FallbackCompiler {
     temp_dir: TempDir,
     libs: Vec<Library>,
     block_map: HashMap<Address, ArvissFunc>,
 }
 
-impl Compiler {
+impl FallbackCompiler {
     pub fn new(dir: TempDir) -> Self {
         Self {
             temp_dir: dir,
@@ -95,9 +95,9 @@ impl Compiler {
         let block_map = unsafe {
             let mut block_map = HashMap::new();
             for (index, block) in blocks.iter().enumerate() {
-                // Deliberately skip blocks.
+                // Deliberately skip blocks when loading so that we can test fallback to interpreting.
                 let symbol = format!("block_{:08x}_{:08x}", block.start, block.end);
-                if index % 16 != 15 {
+                if index % 8 != 7 {
                     let basic_block_fn: Symbol<ArvissFunc> = lib.get(symbol.as_bytes()).unwrap();
                     let basic_block_fn = *basic_block_fn;
                     block_map.insert(block.start, basic_block_fn);
