@@ -1,5 +1,3 @@
-use std::ops::RemAssign;
-
 use arviss::{decoding::Reg, platforms::basic::*, DispatchRv32ic, HandleRv32i};
 
 struct InstructionDecoder<M: Memory>(Rv32iCpu<M>);
@@ -39,7 +37,7 @@ struct LoadInstruction {
     iimm: u32,
 }
 
-enum AluType {
+enum AluImmediateType {
     Addi,
     Slti,
     Sltiu,
@@ -49,7 +47,7 @@ enum AluType {
 }
 
 struct AluImmediateInstruction {
-    alu: AluType,
+    alu: AluImmediateType,
     rd: Reg,
     rs1: Reg,
     iimm: u32,
@@ -74,13 +72,91 @@ struct StoreInstruction {
     simm: u32,
 }
 
+struct AuipcInstruction {
+    rd: Reg,
+    uimm: u32,
+}
+
+struct LuiInstruction {
+    rd: Reg,
+    uimm: u32,
+}
+
+struct JalInstruction {
+    rd: Reg,
+    jimm: u32,
+}
+
+enum AluType {
+    Add,
+    Sub,
+    Xor,
+    Or,
+    And,
+}
+
+struct AluInstruction {
+    alu: AluType,
+    rd: Reg,
+    rs1: Reg,
+    rs2: Reg,
+}
+
+enum ShiftType {
+    Sll,
+    Srl,
+    Sra,
+}
+
+struct ShiftInstruction {
+    shift: ShiftType,
+    rd: Reg,
+    rs1: Reg,
+    rs2: Reg,
+}
+
+enum ConditionalSetType {
+    Slt,
+    Sltu,
+}
+
+struct ConditionalSetInstructional {
+    cond: ConditionalSetType,
+    rd: Reg,
+    rs1: Reg,
+    rs2: Reg,
+}
+
+enum ShiftImmediateType {
+    Slli,
+    Srli,
+    Srai,
+}
+
+struct ShiftImmediateInstruction {
+    shift: ShiftImmediateType,
+    rd: Reg,
+    rs1: Reg,
+    shamt: u32,
+}
+
 enum DecodedInstruction {
     Illegal(IllegalInstruction),
     Branch(BranchInstruction),
     Load(LoadInstruction),
     AluImmediate(AluImmediateInstruction),
+    Shift(ShiftInstruction),
     Jalr(JalrInstruction),
     Store(StoreInstruction),
+    Auipc(AuipcInstruction),
+    Lui(LuiInstruction),
+    Jal(JalInstruction),
+    Alu(AluInstruction),
+    ConditionalSet(ConditionalSetInstructional),
+    ShiftImmediate(ShiftImmediateInstruction),
+    Fence,
+    Ecall,
+    Ebreak,
 }
 
 impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
@@ -191,7 +267,7 @@ impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
 
     fn addi(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
         DecodedInstruction::AluImmediate(AluImmediateInstruction {
-            alu: AluType::Addi,
+            alu: AluImmediateType::Addi,
             rd,
             rs1,
             iimm,
@@ -200,7 +276,7 @@ impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
 
     fn slti(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
         DecodedInstruction::AluImmediate(AluImmediateInstruction {
-            alu: AluType::Slti,
+            alu: AluImmediateType::Slti,
             rd,
             rs1,
             iimm,
@@ -209,7 +285,7 @@ impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
 
     fn sltiu(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
         DecodedInstruction::AluImmediate(AluImmediateInstruction {
-            alu: AluType::Sltiu,
+            alu: AluImmediateType::Sltiu,
             rd,
             rs1,
             iimm,
@@ -218,7 +294,7 @@ impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
 
     fn xori(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
         DecodedInstruction::AluImmediate(AluImmediateInstruction {
-            alu: AluType::Xori,
+            alu: AluImmediateType::Xori,
             rd,
             rs1,
             iimm,
@@ -227,7 +303,7 @@ impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
 
     fn ori(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
         DecodedInstruction::AluImmediate(AluImmediateInstruction {
-            alu: AluType::Ori,
+            alu: AluImmediateType::Ori,
             rd,
             rs1,
             iimm,
@@ -236,7 +312,7 @@ impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
 
     fn andi(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
         DecodedInstruction::AluImmediate(AluImmediateInstruction {
-            alu: AluType::Andi,
+            alu: AluImmediateType::Andi,
             rd,
             rs1,
             iimm,
@@ -275,79 +351,144 @@ impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
     }
 
     fn auipc(&mut self, rd: Reg, uimm: u32) -> Self::Item {
-        todo!()
+        DecodedInstruction::Auipc(AuipcInstruction { rd, uimm })
     }
 
     fn lui(&mut self, rd: Reg, uimm: u32) -> Self::Item {
-        todo!()
+        DecodedInstruction::Lui(LuiInstruction { rd, uimm })
     }
 
     fn jal(&mut self, rd: Reg, jimm: u32) -> Self::Item {
-        todo!()
+        DecodedInstruction::Jal(JalInstruction { rd, jimm })
     }
 
     fn add(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::Add,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn sub(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::Sub,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn sll(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::Shift(ShiftInstruction {
+            shift: ShiftType::Sll,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn slt(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::ConditionalSet(ConditionalSetInstructional {
+            cond: ConditionalSetType::Slt,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn sltu(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::ConditionalSet(ConditionalSetInstructional {
+            cond: ConditionalSetType::Sltu,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn xor(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::Xor,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn srl(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::Shift(ShiftInstruction {
+            shift: ShiftType::Srl,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn sra(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::Shift(ShiftInstruction {
+            shift: ShiftType::Sra,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn or(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::Or,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn and(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        todo!()
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::And,
+            rd,
+            rs1,
+            rs2,
+        })
     }
 
     fn slli(&mut self, rd: Reg, rs1: Reg, shamt: u32) -> Self::Item {
-        todo!()
+        DecodedInstruction::ShiftImmediate(ShiftImmediateInstruction {
+            shift: ShiftImmediateType::Slli,
+            rd,
+            rs1,
+            shamt,
+        })
     }
 
     fn srli(&mut self, rd: Reg, rs1: Reg, shamt: u32) -> Self::Item {
-        todo!()
+        DecodedInstruction::ShiftImmediate(ShiftImmediateInstruction {
+            shift: ShiftImmediateType::Srli,
+            rd,
+            rs1,
+            shamt,
+        })
     }
 
     fn srai(&mut self, rd: Reg, rs1: Reg, shamt: u32) -> Self::Item {
-        todo!()
+        DecodedInstruction::ShiftImmediate(ShiftImmediateInstruction {
+            shift: ShiftImmediateType::Srai,
+            rd,
+            rs1,
+            shamt,
+        })
     }
 
-    fn fence(&mut self, fm: u32, rd: Reg, rs1: Reg) -> Self::Item {
-        todo!()
+    fn fence(&mut self, _fm: u32, _rd: Reg, _rs1: Reg) -> Self::Item {
+        DecodedInstruction::Fence
     }
 
     fn ecall(&mut self) -> Self::Item {
-        todo!()
+        DecodedInstruction::Ecall
     }
 
     fn ebreak(&mut self) -> Self::Item {
-        todo!()
+        DecodedInstruction::Ebreak
     }
 }
 
