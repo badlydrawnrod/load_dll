@@ -1,4 +1,4 @@
-use arviss::{decoding::Reg, platforms::basic::*, DispatchRv32ic, HandleRv32i};
+use arviss::{decoding::Reg, platforms::basic::*, DispatchRv32ic, HandleRv32c, HandleRv32i};
 
 struct InstructionDecoder<M: Memory>(Rv32iCpu<M>);
 
@@ -157,6 +157,7 @@ enum DecodedInstruction {
     Fence,
     Ecall,
     Ebreak,
+    Nop,
 }
 
 impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
@@ -489,6 +490,249 @@ impl<M: Memory> HandleRv32i for InstructionDecoder<M> {
 
     fn ebreak(&mut self) -> Self::Item {
         DecodedInstruction::Ebreak
+    }
+}
+
+impl<M: Memory> HandleRv32c for InstructionDecoder<M> {
+    type Item = DecodedInstruction;
+
+    fn c_addi4spn(&mut self, rdp: Reg, imm: u32) -> Self::Item {
+        DecodedInstruction::AluImmediate(AluImmediateInstruction {
+            alu: AluImmediateType::Addi,
+            rd: rdp,
+            rs1: Reg::SP,
+            iimm: imm,
+        })
+    }
+
+    fn c_lw(&mut self, rdp: Reg, rs1p: Reg, imm: u32) -> Self::Item {
+        DecodedInstruction::Load(LoadInstruction {
+            width: LoadType::Lw,
+            rd: rdp,
+            rs1: rs1p,
+            iimm: imm,
+        })
+    }
+
+    fn c_sw(&mut self, rs1p: Reg, rs2p: Reg, imm: u32) -> Self::Item {
+        DecodedInstruction::Store(StoreInstruction {
+            width: StoreType::Sw,
+            rs1: rs1p,
+            rs2: rs2p,
+            simm: imm,
+        })
+    }
+
+    fn c_sub(&mut self, rdrs1p: Reg, rs2p: Reg) -> Self::Item {
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::Sub,
+            rd: rdrs1p,
+            rs1: rdrs1p,
+            rs2: rs2p,
+        })
+    }
+
+    fn c_xor(&mut self, rdrs1p: Reg, rs2p: Reg) -> Self::Item {
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::Xor,
+            rd: rdrs1p,
+            rs1: rdrs1p,
+            rs2: rs2p,
+        })
+    }
+
+    fn c_or(&mut self, rdrs1p: Reg, rs2p: Reg) -> Self::Item {
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::Or,
+            rd: rdrs1p,
+            rs1: rdrs1p,
+            rs2: rs2p,
+        })
+    }
+
+    fn c_and(&mut self, rdrs1p: Reg, rs2p: Reg) -> Self::Item {
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::And,
+            rd: rdrs1p,
+            rs1: rdrs1p,
+            rs2: rs2p,
+        })
+    }
+
+    fn c_nop(&mut self, _imm: u32) -> Self::Item {
+        DecodedInstruction::Nop
+    }
+
+    fn c_addi16sp(&mut self, imm: u32) -> Self::Item {
+        DecodedInstruction::AluImmediate(AluImmediateInstruction {
+            alu: AluImmediateType::Addi,
+            rd: Reg::SP,
+            rs1: Reg::SP,
+            iimm: imm,
+        })
+    }
+
+    fn c_andi(&mut self, rsrs1p: Reg, imm: u32) -> Self::Item {
+        DecodedInstruction::AluImmediate(AluImmediateInstruction {
+            alu: AluImmediateType::Andi,
+            rd: rsrs1p,
+            rs1: rsrs1p,
+            iimm: imm,
+        })
+    }
+
+    fn c_addi(&mut self, rdrs1n0: Reg, imm: u32) -> Self::Item {
+        DecodedInstruction::AluImmediate(AluImmediateInstruction {
+            alu: AluImmediateType::Andi,
+            rd: rdrs1n0,
+            rs1: rdrs1n0,
+            iimm: imm,
+        })
+    }
+
+    fn c_li(&mut self, rd: Reg, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::AluImmediate(AluImmediateInstruction {
+            alu: AluImmediateType::Addi,
+            rd,
+            rs1: Reg::ZERO,
+            iimm: imm,
+        })
+    }
+
+    fn c_lui(&mut self, rdn2: Reg, imm: u32) -> Self::Item {
+        DecodedInstruction::Lui(LuiInstruction {
+            rd: rdn2,
+            uimm: imm,
+        })
+    }
+
+    fn c_j(&mut self, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Jal(JalInstruction {
+            rd: Reg::ZERO,
+            jimm: imm,
+        })
+    }
+
+    fn c_beqz(&mut self, rs1p: Reg, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Branch(BranchInstruction {
+            branch_type: BranchType::Beq,
+            rs1: rs1p,
+            rs2: Reg::ZERO,
+            bimm: imm,
+        })
+    }
+
+    fn c_bnez(&mut self, rs1p: Reg, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Branch(BranchInstruction {
+            branch_type: BranchType::Bne,
+            rs1: rs1p,
+            rs2: Reg::ZERO,
+            bimm: imm,
+        })
+    }
+
+    fn c_jr(&mut self, rs1n0: Reg) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Jalr(JalrInstruction {
+            rd: Reg::ZERO,
+            rs1: rs1n0,
+            iimm: 0,
+        })
+    }
+
+    fn c_jalr(&mut self, rs1n0: Reg) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Jalr(JalrInstruction {
+            rd: Reg::RA,
+            rs1: rs1n0,
+            iimm: 0,
+        })
+    }
+
+    fn c_ebreak(&mut self) -> Self::Item {
+        DecodedInstruction::Ebreak
+    }
+
+    fn c_mv(&mut self, rd: Reg, rs2n0: Reg) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::Add,
+            rd,
+            rs1: Reg::ZERO,
+            rs2: rs2n0,
+        })
+    }
+
+    fn c_add(&mut self, rdrs1: Reg, rs2n0: Reg) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Alu(AluInstruction {
+            alu: AluType::Add,
+            rd: rdrs1,
+            rs1: rdrs1,
+            rs2: rs2n0,
+        })
+    }
+
+    fn c_lwsp(&mut self, rdn0: Reg, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Load(LoadInstruction {
+            width: LoadType::Lw,
+            rd: rdn0,
+            rs1: Reg::SP,
+            iimm: imm,
+        })
+    }
+
+    fn c_swsp(&mut self, rs2: Reg, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Store(StoreInstruction {
+            width: StoreType::Sw,
+            rs1: Reg::SP,
+            rs2,
+            simm: imm,
+        })
+    }
+
+    fn c_jal(&mut self, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::Jal(JalInstruction {
+            rd: Reg::RA,
+            jimm: imm,
+        })
+    }
+
+    fn c_srli(&mut self, rdrs1p: Reg, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::ShiftImmediate(ShiftImmediateInstruction {
+            shift: ShiftImmediateType::Srli,
+            rd: rdrs1p,
+            rs1: rdrs1p,
+            shamt: imm,
+        })
+    }
+
+    fn c_srai(&mut self, rdrs1p: Reg, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::ShiftImmediate(ShiftImmediateInstruction {
+            shift: ShiftImmediateType::Srai,
+            rd: rdrs1p,
+            rs1: rdrs1p,
+            shamt: imm,
+        })
+    }
+
+    fn c_slli(&mut self, rdrs1n0: Reg, imm: u32) -> Self::Item {
+        // TODO: dedicated instruction.
+        DecodedInstruction::ShiftImmediate(ShiftImmediateInstruction {
+            shift: ShiftImmediateType::Slli,
+            rd: rdrs1n0,
+            rs1: rdrs1n0,
+            shamt: imm,
+        })
     }
 }
 
