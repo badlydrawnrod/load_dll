@@ -109,6 +109,8 @@ struct JalOp {
 enum AluFunc {
     Add,
     Sub,
+    Slt,
+    Sltu,
     Xor,
     Or,
     And,
@@ -138,20 +140,6 @@ struct ShiftOp {
 }
 
 #[derive(Debug)]
-enum SetConditionalFunc {
-    Slt,
-    Sltu,
-}
-
-#[derive(Debug)]
-struct SetConditionalOp {
-    func: SetConditionalFunc,
-    rd: Reg,
-    rs1: Reg,
-    rs2: Reg,
-}
-
-#[derive(Debug)]
 enum ShiftImmFunc {
     Slli,
     Srli,
@@ -167,7 +155,7 @@ struct ShiftImmOp {
 }
 
 #[derive(Debug)]
-enum DecodedInstruction {
+enum Decoded {
     Illegal(IllegalOp),
     Branch(BranchOp),
     Load(LoadOp),
@@ -179,7 +167,6 @@ enum DecodedInstruction {
     Lui(LuiOp),
     Jal(JalOp),
     Alu(AluOp),
-    CondSet(SetConditionalOp),
     ShiftImm(ShiftImmOp),
     Fence,
     Ecall,
@@ -188,14 +175,14 @@ enum DecodedInstruction {
 }
 
 impl HandleRv32i for InstructionDecoder {
-    type Item = DecodedInstruction;
+    type Item = Decoded;
 
     fn illegal(&mut self, ins: u32) -> Self::Item {
-        DecodedInstruction::Illegal(IllegalOp { ins })
+        Decoded::Illegal(IllegalOp { ins })
     }
 
     fn beq(&mut self, rs1: Reg, rs2: Reg, bimm: u32) -> Self::Item {
-        DecodedInstruction::Branch(BranchOp {
+        Decoded::Branch(BranchOp {
             func: BranchFunc::Beq,
             rs1,
             rs2,
@@ -204,7 +191,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn bne(&mut self, rs1: Reg, rs2: Reg, bimm: u32) -> Self::Item {
-        DecodedInstruction::Branch(BranchOp {
+        Decoded::Branch(BranchOp {
             func: BranchFunc::Bne,
             rs1,
             rs2,
@@ -213,7 +200,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn blt(&mut self, rs1: Reg, rs2: Reg, bimm: u32) -> Self::Item {
-        DecodedInstruction::Branch(BranchOp {
+        Decoded::Branch(BranchOp {
             func: BranchFunc::Blt,
             rs1,
             rs2,
@@ -222,7 +209,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn bge(&mut self, rs1: Reg, rs2: Reg, bimm: u32) -> Self::Item {
-        DecodedInstruction::Branch(BranchOp {
+        Decoded::Branch(BranchOp {
             func: BranchFunc::Bge,
             rs1,
             rs2,
@@ -231,7 +218,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn bltu(&mut self, rs1: Reg, rs2: Reg, bimm: u32) -> Self::Item {
-        DecodedInstruction::Branch(BranchOp {
+        Decoded::Branch(BranchOp {
             func: BranchFunc::Bltu,
             rs1,
             rs2,
@@ -240,7 +227,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn bgeu(&mut self, rs1: Reg, rs2: Reg, bimm: u32) -> Self::Item {
-        DecodedInstruction::Branch(BranchOp {
+        Decoded::Branch(BranchOp {
             func: BranchFunc::Bgeu,
             rs1,
             rs2,
@@ -249,7 +236,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn lb(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::Load(LoadOp {
+        Decoded::Load(LoadOp {
             func: LoadFunc::Lb,
             rd,
             rs1,
@@ -258,7 +245,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn lh(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::Load(LoadOp {
+        Decoded::Load(LoadOp {
             func: LoadFunc::Lh,
             rd,
             rs1,
@@ -267,7 +254,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn lw(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::Load(LoadOp {
+        Decoded::Load(LoadOp {
             func: LoadFunc::Lw,
             rd,
             rs1,
@@ -276,7 +263,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn lbu(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::Load(LoadOp {
+        Decoded::Load(LoadOp {
             func: LoadFunc::Lbu,
             rd,
             rs1,
@@ -285,7 +272,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn lhu(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::Load(LoadOp {
+        Decoded::Load(LoadOp {
             func: LoadFunc::Lhu,
             rd,
             rs1,
@@ -294,7 +281,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn addi(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Addi,
             rd,
             rs1,
@@ -303,7 +290,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn slti(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Slti,
             rd,
             rs1,
@@ -312,7 +299,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn sltiu(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Sltiu,
             rd,
             rs1,
@@ -321,7 +308,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn xori(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Xori,
             rd,
             rs1,
@@ -330,7 +317,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn ori(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Ori,
             rd,
             rs1,
@@ -339,7 +326,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn andi(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Andi,
             rd,
             rs1,
@@ -348,11 +335,11 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn jalr(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        DecodedInstruction::Jalr(JalrOp { rd, rs1, iimm })
+        Decoded::Jalr(JalrOp { rd, rs1, iimm })
     }
 
     fn sb(&mut self, rs1: Reg, rs2: Reg, simm: u32) -> Self::Item {
-        DecodedInstruction::Store(StoreOp {
+        Decoded::Store(StoreOp {
             func: StoreFunc::Sb,
             rs1,
             rs2,
@@ -361,7 +348,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn sh(&mut self, rs1: Reg, rs2: Reg, simm: u32) -> Self::Item {
-        DecodedInstruction::Store(StoreOp {
+        Decoded::Store(StoreOp {
             func: StoreFunc::Sh,
             rs1,
             rs2,
@@ -370,7 +357,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn sw(&mut self, rs1: Reg, rs2: Reg, simm: u32) -> Self::Item {
-        DecodedInstruction::Store(StoreOp {
+        Decoded::Store(StoreOp {
             func: StoreFunc::Sw,
             rs1,
             rs2,
@@ -379,19 +366,19 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn auipc(&mut self, rd: Reg, uimm: u32) -> Self::Item {
-        DecodedInstruction::Auipc(AuipcOp { rd, uimm })
+        Decoded::Auipc(AuipcOp { rd, uimm })
     }
 
     fn lui(&mut self, rd: Reg, uimm: u32) -> Self::Item {
-        DecodedInstruction::Lui(LuiOp { rd, uimm })
+        Decoded::Lui(LuiOp { rd, uimm })
     }
 
     fn jal(&mut self, rd: Reg, jimm: u32) -> Self::Item {
-        DecodedInstruction::Jal(JalOp { rd, jimm })
+        Decoded::Jal(JalOp { rd, jimm })
     }
 
     fn add(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::Add,
             rd,
             rs1,
@@ -400,7 +387,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn sub(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::Sub,
             rd,
             rs1,
@@ -409,7 +396,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn sll(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::Shift(ShiftOp {
+        Decoded::Shift(ShiftOp {
             func: ShiftFunc::Sll,
             rd,
             rs1,
@@ -418,8 +405,8 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn slt(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::CondSet(SetConditionalOp {
-            func: SetConditionalFunc::Slt,
+        Decoded::Alu(AluOp {
+            func: AluFunc::Slt,
             rd,
             rs1,
             rs2,
@@ -427,8 +414,8 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn sltu(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::CondSet(SetConditionalOp {
-            func: SetConditionalFunc::Sltu,
+        Decoded::Alu(AluOp {
+            func: AluFunc::Sltu,
             rd,
             rs1,
             rs2,
@@ -436,7 +423,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn xor(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::Xor,
             rd,
             rs1,
@@ -445,7 +432,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn srl(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::Shift(ShiftOp {
+        Decoded::Shift(ShiftOp {
             func: ShiftFunc::Srl,
             rd,
             rs1,
@@ -454,7 +441,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn sra(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::Shift(ShiftOp {
+        Decoded::Shift(ShiftOp {
             func: ShiftFunc::Sra,
             rd,
             rs1,
@@ -463,7 +450,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn or(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::Or,
             rd,
             rs1,
@@ -472,7 +459,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn and(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::And,
             rd,
             rs1,
@@ -481,7 +468,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn slli(&mut self, rd: Reg, rs1: Reg, shamt: u32) -> Self::Item {
-        DecodedInstruction::ShiftImm(ShiftImmOp {
+        Decoded::ShiftImm(ShiftImmOp {
             func: ShiftImmFunc::Slli,
             rd,
             rs1,
@@ -490,7 +477,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn srli(&mut self, rd: Reg, rs1: Reg, shamt: u32) -> Self::Item {
-        DecodedInstruction::ShiftImm(ShiftImmOp {
+        Decoded::ShiftImm(ShiftImmOp {
             func: ShiftImmFunc::Srli,
             rd,
             rs1,
@@ -499,7 +486,7 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn srai(&mut self, rd: Reg, rs1: Reg, shamt: u32) -> Self::Item {
-        DecodedInstruction::ShiftImm(ShiftImmOp {
+        Decoded::ShiftImm(ShiftImmOp {
             func: ShiftImmFunc::Srai,
             rd,
             rs1,
@@ -508,23 +495,23 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn fence(&mut self, _fm: u32, _rd: Reg, _rs1: Reg) -> Self::Item {
-        DecodedInstruction::Fence
+        Decoded::Fence
     }
 
     fn ecall(&mut self) -> Self::Item {
-        DecodedInstruction::Ecall
+        Decoded::Ecall
     }
 
     fn ebreak(&mut self) -> Self::Item {
-        DecodedInstruction::Ebreak
+        Decoded::Ebreak
     }
 }
 
 impl HandleRv32c for InstructionDecoder {
-    type Item = DecodedInstruction;
+    type Item = Decoded;
 
     fn c_addi4spn(&mut self, rdp: Reg, imm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Addi,
             rd: rdp,
             rs1: Reg::SP,
@@ -533,7 +520,7 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_lw(&mut self, rdp: Reg, rs1p: Reg, imm: u32) -> Self::Item {
-        DecodedInstruction::Load(LoadOp {
+        Decoded::Load(LoadOp {
             func: LoadFunc::Lw,
             rd: rdp,
             rs1: rs1p,
@@ -542,7 +529,7 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_sw(&mut self, rs1p: Reg, rs2p: Reg, imm: u32) -> Self::Item {
-        DecodedInstruction::Store(StoreOp {
+        Decoded::Store(StoreOp {
             func: StoreFunc::Sw,
             rs1: rs1p,
             rs2: rs2p,
@@ -551,7 +538,7 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_sub(&mut self, rdrs1p: Reg, rs2p: Reg) -> Self::Item {
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::Sub,
             rd: rdrs1p,
             rs1: rdrs1p,
@@ -560,7 +547,7 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_xor(&mut self, rdrs1p: Reg, rs2p: Reg) -> Self::Item {
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::Xor,
             rd: rdrs1p,
             rs1: rdrs1p,
@@ -569,7 +556,7 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_or(&mut self, rdrs1p: Reg, rs2p: Reg) -> Self::Item {
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::Or,
             rd: rdrs1p,
             rs1: rdrs1p,
@@ -578,7 +565,7 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_and(&mut self, rdrs1p: Reg, rs2p: Reg) -> Self::Item {
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::And,
             rd: rdrs1p,
             rs1: rdrs1p,
@@ -587,11 +574,11 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_nop(&mut self, _imm: u32) -> Self::Item {
-        DecodedInstruction::Nop
+        Decoded::Nop
     }
 
     fn c_addi16sp(&mut self, imm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Addi,
             rd: Reg::SP,
             rs1: Reg::SP,
@@ -600,7 +587,7 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_andi(&mut self, rsrs1p: Reg, imm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Andi,
             rd: rsrs1p,
             rs1: rsrs1p,
@@ -609,7 +596,7 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_addi(&mut self, rdrs1n0: Reg, imm: u32) -> Self::Item {
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Andi,
             rd: rdrs1n0,
             rs1: rdrs1n0,
@@ -619,7 +606,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_li(&mut self, rd: Reg, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::AluImmediate(AluImmOp {
+        Decoded::AluImmediate(AluImmOp {
             func: AluImmFunc::Addi,
             rd,
             rs1: Reg::ZERO,
@@ -628,7 +615,7 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_lui(&mut self, rdn2: Reg, imm: u32) -> Self::Item {
-        DecodedInstruction::Lui(LuiOp {
+        Decoded::Lui(LuiOp {
             rd: rdn2,
             uimm: imm,
         })
@@ -636,7 +623,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_j(&mut self, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Jal(JalOp {
+        Decoded::Jal(JalOp {
             rd: Reg::ZERO,
             jimm: imm,
         })
@@ -644,7 +631,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_beqz(&mut self, rs1p: Reg, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Branch(BranchOp {
+        Decoded::Branch(BranchOp {
             func: BranchFunc::Beq,
             rs1: rs1p,
             rs2: Reg::ZERO,
@@ -654,7 +641,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_bnez(&mut self, rs1p: Reg, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Branch(BranchOp {
+        Decoded::Branch(BranchOp {
             func: BranchFunc::Bne,
             rs1: rs1p,
             rs2: Reg::ZERO,
@@ -664,7 +651,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_jr(&mut self, rs1n0: Reg) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Jalr(JalrOp {
+        Decoded::Jalr(JalrOp {
             rd: Reg::ZERO,
             rs1: rs1n0,
             iimm: 0,
@@ -673,7 +660,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_jalr(&mut self, rs1n0: Reg) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Jalr(JalrOp {
+        Decoded::Jalr(JalrOp {
             rd: Reg::RA,
             rs1: rs1n0,
             iimm: 0,
@@ -681,12 +668,12 @@ impl HandleRv32c for InstructionDecoder {
     }
 
     fn c_ebreak(&mut self) -> Self::Item {
-        DecodedInstruction::Ebreak
+        Decoded::Ebreak
     }
 
     fn c_mv(&mut self, rd: Reg, rs2n0: Reg) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::Add,
             rd,
             rs1: Reg::ZERO,
@@ -696,7 +683,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_add(&mut self, rdrs1: Reg, rs2n0: Reg) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Alu(AluOp {
+        Decoded::Alu(AluOp {
             func: AluFunc::Add,
             rd: rdrs1,
             rs1: rdrs1,
@@ -706,7 +693,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_lwsp(&mut self, rdn0: Reg, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Load(LoadOp {
+        Decoded::Load(LoadOp {
             func: LoadFunc::Lw,
             rd: rdn0,
             rs1: Reg::SP,
@@ -716,7 +703,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_swsp(&mut self, rs2: Reg, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Store(StoreOp {
+        Decoded::Store(StoreOp {
             func: StoreFunc::Sw,
             rs1: Reg::SP,
             rs2,
@@ -726,7 +713,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_jal(&mut self, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::Jal(JalOp {
+        Decoded::Jal(JalOp {
             rd: Reg::RA,
             jimm: imm,
         })
@@ -734,7 +721,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_srli(&mut self, rdrs1p: Reg, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::ShiftImm(ShiftImmOp {
+        Decoded::ShiftImm(ShiftImmOp {
             func: ShiftImmFunc::Srli,
             rd: rdrs1p,
             rs1: rdrs1p,
@@ -744,7 +731,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_srai(&mut self, rdrs1p: Reg, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::ShiftImm(ShiftImmOp {
+        Decoded::ShiftImm(ShiftImmOp {
             func: ShiftImmFunc::Srai,
             rd: rdrs1p,
             rs1: rdrs1p,
@@ -754,7 +741,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_slli(&mut self, rdrs1n0: Reg, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
-        DecodedInstruction::ShiftImm(ShiftImmOp {
+        Decoded::ShiftImm(ShiftImmOp {
             func: ShiftImmFunc::Slli,
             rd: rdrs1n0,
             rs1: rdrs1n0,
@@ -763,9 +750,74 @@ impl HandleRv32c for InstructionDecoder {
     }
 }
 
+fn execute<T>(cpu: &mut T, ins: &Decoded)
+where
+    T: Fetch + Trap + XRegisters + Memory,
+{
+    match ins {
+        Decoded::Illegal(c) => cpu.illegal(c.ins),
+        Decoded::Branch(c) => match c.func {
+            BranchFunc::Beq => cpu.beq(c.rs1, c.rs2, c.bimm),
+            BranchFunc::Bne => cpu.bne(c.rs1, c.rs2, c.bimm),
+            BranchFunc::Blt => cpu.blt(c.rs1, c.rs2, c.bimm),
+            BranchFunc::Bge => cpu.bge(c.rs1, c.rs2, c.bimm),
+            BranchFunc::Bltu => cpu.bltu(c.rs1, c.rs2, c.bimm),
+            BranchFunc::Bgeu => cpu.bgeu(c.rs1, c.rs2, c.bimm),
+        },
+        Decoded::Load(c) => match c.func {
+            LoadFunc::Lb => cpu.lb(c.rd, c.rs1, c.iimm),
+            LoadFunc::Lh => cpu.lh(c.rd, c.rs1, c.iimm),
+            LoadFunc::Lw => cpu.lw(c.rd, c.rs1, c.iimm),
+            LoadFunc::Lbu => cpu.lbu(c.rd, c.rs1, c.iimm),
+            LoadFunc::Lhu => cpu.lhu(c.rd, c.rs1, c.iimm),
+        },
+        Decoded::AluImmediate(c) => match c.func {
+            AluImmFunc::Addi => cpu.addi(c.rd, c.rs1, c.iimm),
+            AluImmFunc::Slti => cpu.slti(c.rd, c.rs1, c.iimm),
+            AluImmFunc::Sltiu => cpu.sltiu(c.rd, c.rs1, c.iimm),
+            AluImmFunc::Xori => cpu.xori(c.rd, c.rs1, c.iimm),
+            AluImmFunc::Ori => cpu.ori(c.rd, c.rs1, c.iimm),
+            AluImmFunc::Andi => cpu.andi(c.rd, c.rs1, c.iimm),
+        },
+        Decoded::Shift(c) => match c.func {
+            ShiftFunc::Sll => cpu.sll(c.rd, c.rs1, c.rs2),
+            ShiftFunc::Srl => cpu.srl(c.rd, c.rs1, c.rs2),
+            ShiftFunc::Sra => cpu.sra(c.rd, c.rs1, c.rs2),
+        },
+        Decoded::Jalr(c) => cpu.jalr(c.rd, c.rs1, c.iimm),
+        Decoded::Store(c) => match c.func {
+            StoreFunc::Sb => cpu.sb(c.rs1, c.rs2, c.simm),
+            StoreFunc::Sh => cpu.sh(c.rs1, c.rs2, c.simm),
+            StoreFunc::Sw => cpu.sw(c.rs1, c.rs2, c.simm),
+        },
+        Decoded::Auipc(c) => cpu.auipc(c.rd, c.uimm),
+        Decoded::Lui(c) => cpu.lui(c.rd, c.uimm),
+        Decoded::Jal(c) => cpu.jal(c.rd, c.jimm),
+        Decoded::Alu(c) => match c.func {
+            AluFunc::Add => cpu.add(c.rd, c.rs1, c.rs2),
+            AluFunc::Sub => cpu.sub(c.rd, c.rs1, c.rs2),
+            AluFunc::Slt => cpu.slt(c.rd, c.rs1, c.rs2),
+            AluFunc::Sltu => cpu.sltu(c.rd, c.rs1, c.rs2),
+            AluFunc::Xor => cpu.xor(c.rd, c.rs1, c.rs2),
+            AluFunc::Or => cpu.or(c.rd, c.rs1, c.rs2),
+            AluFunc::And => cpu.and(c.rd, c.rs1, c.rs2),
+        },
+        Decoded::ShiftImm(c) => match c.func {
+            ShiftImmFunc::Slli => cpu.slli(c.rd, c.rs1, c.shamt),
+            ShiftImmFunc::Srli => cpu.srli(c.rd, c.rs1, c.shamt),
+            ShiftImmFunc::Srai => cpu.srai(c.rd, c.rs1, c.shamt),
+        },
+        Decoded::Fence => cpu.fence(0, Reg::ZERO, Reg::ZERO), // TODO: does this seem right?
+        Decoded::Ecall => cpu.ecall(),
+        Decoded::Ebreak => cpu.ebreak(),
+        Decoded::Nop => cpu.c_nop(0), // TODO: does this seem right?
+    }
+}
+
 pub fn main() {
     // Load the image into a buffer.
-    let path = "images/hello_world.rv32ic";
+    // let path = "images/hello_world.rv32ic";
+    let path = "images/hello_world.rv32i";
     let Ok(file_data) = std::fs::read(path) else {
         eprintln!("Failed to read file: `{}`", path);
         std::process::exit(1);
@@ -786,9 +838,10 @@ pub fn main() {
         let ins = cpu.fetch().unwrap();
 
         // Decode and dispatch.
-        cpu.dispatch(ins);
+        // cpu.dispatch(ins);
         let disassembled = disassembler.dispatch(ins);
         let decoded = decoder.dispatch(ins);
+        execute(&mut cpu, &decoded);
         println!("Dis: {} Dec: {:?}", disassembled, decoded);
     }
 
