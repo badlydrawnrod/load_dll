@@ -66,7 +66,14 @@ struct AluImmOp {
 }
 
 #[derive(Debug)]
+enum JalrFunc {
+    Jalr,
+    CJalr,
+}
+
+#[derive(Debug)]
 struct JalrOp {
+    func: JalrFunc,
     rd: Reg,
     rs1: Reg,
     iimm: u32,
@@ -100,7 +107,14 @@ struct LuiOp {
 }
 
 #[derive(Debug)]
+enum JalFunc {
+    Jal,
+    CJal,
+}
+
+#[derive(Debug)]
 struct JalOp {
+    func: JalFunc,
     rd: Reg,
     jimm: u32,
 }
@@ -335,7 +349,12 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn jalr(&mut self, rd: Reg, rs1: Reg, iimm: u32) -> Self::Item {
-        Decoded::Jalr(JalrOp { rd, rs1, iimm })
+        Decoded::Jalr(JalrOp {
+            func: JalrFunc::Jalr,
+            rd,
+            rs1,
+            iimm,
+        })
     }
 
     fn sb(&mut self, rs1: Reg, rs2: Reg, simm: u32) -> Self::Item {
@@ -374,7 +393,11 @@ impl HandleRv32i for InstructionDecoder {
     }
 
     fn jal(&mut self, rd: Reg, jimm: u32) -> Self::Item {
-        Decoded::Jal(JalOp { rd, jimm })
+        Decoded::Jal(JalOp {
+            func: JalFunc::Jal,
+            rd,
+            jimm,
+        })
     }
 
     fn add(&mut self, rd: Reg, rs1: Reg, rs2: Reg) -> Self::Item {
@@ -597,7 +620,7 @@ impl HandleRv32c for InstructionDecoder {
 
     fn c_addi(&mut self, rdrs1n0: Reg, imm: u32) -> Self::Item {
         Decoded::AluImmediate(AluImmOp {
-            func: AluImmFunc::Andi,
+            func: AluImmFunc::Addi,
             rd: rdrs1n0,
             rs1: rdrs1n0,
             iimm: imm,
@@ -624,6 +647,7 @@ impl HandleRv32c for InstructionDecoder {
     fn c_j(&mut self, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
         Decoded::Jal(JalOp {
+            func: JalFunc::CJal,
             rd: Reg::ZERO,
             jimm: imm,
         })
@@ -652,6 +676,7 @@ impl HandleRv32c for InstructionDecoder {
     fn c_jr(&mut self, rs1n0: Reg) -> Self::Item {
         // TODO: dedicated instruction.
         Decoded::Jalr(JalrOp {
+            func: JalrFunc::CJalr,
             rd: Reg::ZERO,
             rs1: rs1n0,
             iimm: 0,
@@ -661,6 +686,7 @@ impl HandleRv32c for InstructionDecoder {
     fn c_jalr(&mut self, rs1n0: Reg) -> Self::Item {
         // TODO: dedicated instruction.
         Decoded::Jalr(JalrOp {
+            func: JalrFunc::CJalr,
             rd: Reg::RA,
             rs1: rs1n0,
             iimm: 0,
@@ -714,6 +740,7 @@ impl HandleRv32c for InstructionDecoder {
     fn c_jal(&mut self, imm: u32) -> Self::Item {
         // TODO: dedicated instruction.
         Decoded::Jal(JalOp {
+            func: JalFunc::CJal,
             rd: Reg::RA,
             jimm: imm,
         })
@@ -784,7 +811,10 @@ where
             ShiftFunc::Srl => cpu.srl(c.rd, c.rs1, c.rs2),
             ShiftFunc::Sra => cpu.sra(c.rd, c.rs1, c.rs2),
         },
-        Decoded::Jalr(c) => cpu.jalr(c.rd, c.rs1, c.iimm),
+        Decoded::Jalr(c) => match c.func {
+            JalrFunc::Jalr => cpu.jalr(c.rd, c.rs1, c.iimm),
+            JalrFunc::CJalr => cpu.c_jalr(c.rs1), // TODO: perhaps this doesn't belong here.
+        },
         Decoded::Store(c) => match c.func {
             StoreFunc::Sb => cpu.sb(c.rs1, c.rs2, c.simm),
             StoreFunc::Sh => cpu.sh(c.rs1, c.rs2, c.simm),
@@ -792,7 +822,10 @@ where
         },
         Decoded::Auipc(c) => cpu.auipc(c.rd, c.uimm),
         Decoded::Lui(c) => cpu.lui(c.rd, c.uimm),
-        Decoded::Jal(c) => cpu.jal(c.rd, c.jimm),
+        Decoded::Jal(c) => match c.func {
+            JalFunc::Jal => cpu.jal(c.rd, c.jimm),
+            JalFunc::CJal => cpu.c_jal(c.jimm), // TODO: perhaps this doesn't belong here.
+        },
         Decoded::Alu(c) => match c.func {
             AluFunc::Add => cpu.add(c.rd, c.rs1, c.rs2),
             AluFunc::Sub => cpu.sub(c.rd, c.rs1, c.rs2),
@@ -816,38 +849,54 @@ where
 
 pub fn main() {
     // Load the image into a buffer.
-    // let path = "images/hello_world.rv32ic";
-    let path = "images/hello_world.rv32i";
+    let path = "images/hello_world.rv32ic";
+    // let path = "images/hello_world.rv32i";
     let Ok(file_data) = std::fs::read(path) else {
         eprintln!("Failed to read file: `{}`", path);
         std::process::exit(1);
     };
     let image = file_data.as_slice();
 
-    // Create a simulator and copy the image from the buffer into simulator memory.
-    let mut cpu = Rv32iCpu::<BasicMem>::new();
-    cpu.write_bytes(0, image)
-        .expect("Failed to initialize memory.");
+    // Create the reference simulator and copy the image from the buffer into simulator memory.
+    let mut reference_cpu = Rv32iCpu::<BasicMem>::new();
+    reference_cpu
+        .write_bytes(0, image)
+        .expect("Failed to initialize memory in reference cpu.");
+
+    // Create the simulator that we want to test. Give it the same image.
+    let mut test_cpu = Rv32iCpu::<BasicMem>::new();
+    test_cpu
+        .write_bytes(0, image)
+        .expect("Failed to initialize memory in test cpu.");
 
     let mut decoder = InstructionDecoder {};
     let mut disassembler = Disassembler {};
 
     // Run until we can run no more.
-    while !cpu.is_trapped() {
+    while !reference_cpu.is_trapped() && !test_cpu.is_trapped() {
+        // Run one tick on the reference simulator.
         // Fetch.
-        let ins = cpu.fetch().unwrap();
+        let ref_ins = reference_cpu.fetch().unwrap();
+        reference_cpu.dispatch(ref_ins);
 
-        // Decode and dispatch.
-        // cpu.dispatch(ins);
-        let disassembled = disassembler.dispatch(ins);
-        let decoded = decoder.dispatch(ins);
-        execute(&mut cpu, &decoded);
-        println!("Dis: {} Dec: {:?}", disassembled, decoded);
+        // Run one tick on the test simulator.
+        // Fetch.
+        let test_ins = test_cpu.fetch().unwrap();
+        // let disassembled = disassembler.dispatch(ins);
+        let decoded = decoder.dispatch(test_ins);
+        execute(&mut test_cpu, &decoded);
+        // println!("Dis: {} Dec: {:?}", disassembled, decoded);
     }
 
-    match cpu.trap_cause() {
+    match reference_cpu.trap_cause() {
         Some(TrapCause::Breakpoint) => {}
-        Some(cause) => println!("{:?} at 0x{:08x}", cause, cpu.pc()),
+        Some(cause) => println!("Reference CPU: {:?} at 0x{:08x}", cause, reference_cpu.pc()),
+        None => {}
+    }
+
+    match test_cpu.trap_cause() {
+        Some(TrapCause::Breakpoint) => {}
+        Some(cause) => println!("Test CPU: {:?} at 0x{:08x}", cause, test_cpu.pc()),
         None => {}
     }
 }
