@@ -873,7 +873,7 @@ pub fn main() {
     let mut disassembler = Disassembler {};
 
     // Run until we can run no more.
-    while !reference_cpu.is_trapped() && !test_cpu.is_trapped() {
+    while !reference_cpu.is_trapped() && !test_cpu.is_trapped() && reference_cpu == test_cpu {
         // Run one tick on the reference simulator.
         // Fetch.
         let ref_ins = reference_cpu.fetch().unwrap();
@@ -887,6 +887,8 @@ pub fn main() {
         execute(&mut test_cpu, &decoded);
         // println!("Dis: {} Dec: {:?}", disassembled, decoded);
     }
+
+    println!("The simulators are {}", if reference_cpu == test_cpu { "equal" } else { "NOT equal" });
 
     match reference_cpu.trap_cause() {
         Some(TrapCause::Breakpoint) => {}
