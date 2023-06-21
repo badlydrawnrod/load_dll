@@ -68,6 +68,7 @@ struct AluImmOp {
 #[derive(Debug)]
 enum JalrFunc {
     Jalr,
+    CJr,
     CJalr,
 }
 
@@ -676,7 +677,7 @@ impl HandleRv32c for InstructionDecoder {
     fn c_jr(&mut self, rs1n0: Reg) -> Self::Item {
         // TODO: dedicated instruction.
         Decoded::Jalr(JalrOp {
-            func: JalrFunc::CJalr,
+            func: JalrFunc::CJr,
             rd: Reg::ZERO,
             rs1: rs1n0,
             iimm: 0,
@@ -813,6 +814,7 @@ where
         },
         Decoded::Jalr(c) => match c.func {
             JalrFunc::Jalr => cpu.jalr(c.rd, c.rs1, c.iimm),
+            JalrFunc::CJr => cpu.c_jr(c.rs1), // TODO: perhaps this doesn't belong here.
             JalrFunc::CJalr => cpu.c_jalr(c.rs1), // TODO: perhaps this doesn't belong here.
         },
         Decoded::Store(c) => match c.func {
@@ -882,13 +884,17 @@ pub fn main() {
         // Run one tick on the test simulator.
         // Fetch.
         let test_ins = test_cpu.fetch().unwrap();
-        // let disassembled = disassembler.dispatch(ins);
+        let test_dis = disassembler.dispatch(test_ins);
         let decoded = decoder.dispatch(test_ins);
         execute(&mut test_cpu, &decoded);
-        // println!("Dis: {} Dec: {:?}", disassembled, decoded);
+        // println!("Test dis: {} Dec: {:?}", test_dis, decoded);
     }
 
-    println!("The simulators are {}", if reference_cpu == test_cpu { "equal" } else { "NOT equal" });
+    if reference_cpu != test_cpu {
+        println!("The simulators do not agree.");
+        println!("--- Reference Sim ---\n{}", reference_cpu);
+        println!("-------- Test Sim ---\n{}", test_cpu);
+    }
 
     match reference_cpu.trap_cause() {
         Some(TrapCause::Breakpoint) => {}
