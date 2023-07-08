@@ -1,6 +1,6 @@
 use arviss::Address;
 
-pub(crate) fn read_instruction(slice: &[u8], addr: Address) -> Result<u32, Address> {
+pub fn read_instruction(slice: &[u8], addr: Address) -> Result<u32, Address> {
     let index = addr as usize;
     if (0..slice.len() - 3).contains(&index) {
         if let Ok(slice) = &slice[index..index + 4].try_into() {
