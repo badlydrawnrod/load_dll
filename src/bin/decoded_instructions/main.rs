@@ -1,14 +1,11 @@
 mod decoded;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Index};
 
 use decoded::*;
 
 use arviss::{
-    decoding::Reg,
-    disassembler::{self, Disassembler},
-    platforms::basic::*,
-    Address, DispatchRv32ic, HandleRv32c, HandleRv32i,
+    decoding::Reg, platforms::basic::*, Address, DispatchRv32ic, HandleRv32c, HandleRv32i,
 };
 use load_dll::block_finder::BlockFinder;
 use load_dll::read_instruction::*;
@@ -85,20 +82,27 @@ where
 }
 
 type DecodedBlock = Vec<Decoded>;
+type Addresses = Vec<Address>;
 
 pub struct DecodingCompiler {
     block_map: HashMap<Address, DecodedBlock>,
+    addr_map: HashMap<Address, Addresses>,
 }
 
 impl DecodingCompiler {
     pub fn new() -> Self {
         Self {
             block_map: HashMap::new(),
+            addr_map: HashMap::new(),
         }
     }
 
     pub fn get(&self, addr: Address) -> Option<&DecodedBlock> {
         self.block_map.get(&addr)
+    }
+
+    pub fn get_addresses(&self, addr: Address) -> Option<&Addresses> {
+        self.addr_map.get(&addr)
     }
 
     pub fn compile(&mut self, image: &[u8]) {
@@ -114,34 +118,29 @@ impl DecodingCompiler {
 
         // Decode each block.
         let mut decoder = InstructionDecoder {};
-        let mut disassembler = Disassembler {};
         for block in blocks {
             let mut addr = block.start;
-            println!("-------- Block at {:08x}", addr);
             let mut decoded_block = Vec::new();
+            let mut addresses = Vec::new();
             while addr < block.end {
                 let ins = read_instruction(image, addr).unwrap(); // TODO: Don't unwrap.
-                let code = disassembler.dispatch(ins);
                 let decoded = decoder.dispatch(ins);
                 let is_compact = (ins & 3) != 3;
                 if is_compact {
                     // Compact instructions are 2 bytes each.
-                    // println!("// {:08x}     {:04x} {}", addr, ins & 0xffff, code);
-                    // println!("Addr: {:08x} Decoded {:#?}", addr, decoded);
                     addr += 2;
                 } else {
                     // Regular instructions are 4 bytes each.
-                    // println!("// {:08x} {:08x} {}", addr, ins, code);
-                    // println!("Addr: {:08x} Decoded {:#?}", addr, decoded);
                     addr += 4;
                 }
+                addresses.push(addr);
                 decoded_block.push(decoded);
             }
             self.block_map.insert(block.start, decoded_block);
+            self.addr_map.insert(block.start, addresses);
         }
 
         // At this point we have a block map consisting of decoded blocks.
-        println!("Done and done");
     }
 }
 
@@ -171,46 +170,22 @@ pub fn main() {
     let mut decoding_compiler = DecodingCompiler::new();
     decoding_compiler.compile(image);
 
-    let mut decoder = InstructionDecoder {};
-    let mut disassembler = Disassembler {};
-
     // Run until we've run out of basic blocks.
     let mut addr = 0;
     while let Some(decoded_block) = decoding_compiler.get(addr) {
+        let addresses = decoding_compiler.get_addresses(addr).unwrap();
+        let mut i = 0;
         for decoded in decoded_block {
+            // Here's what we *think* the next pc will be. It could be modified by a jump.
+            addr = *addresses.index(i);
+            test_cpu.set_next_pc(addr);
             execute(&mut test_cpu, &decoded);
+            addr = test_cpu.transfer();
+            i += 1;
         }
-        // TODO: When we get to the end of the block then we need to know what the next address is, which will be set
-        // either by a jump instruction, or implicitly, and that's the part I'm trying to figure out.
-        addr = test_cpu.transfer();
-    }
-
-    // Run until we can run no more.
-    while !reference_cpu.is_trapped() && !test_cpu.is_trapped() && reference_cpu == test_cpu {
-        // Run one tick on the reference simulator.
-        // Fetch.
-        let ref_ins = reference_cpu.fetch().unwrap();
-        reference_cpu.dispatch(ref_ins);
-
-        // Run one tick on the test simulator.
-        // Fetch.
-        let test_ins = test_cpu.fetch().unwrap();
-        let test_dis = disassembler.dispatch(test_ins);
-        let decoded = decoder.dispatch(test_ins);
-        execute(&mut test_cpu, &decoded);
-        // println!("Test dis: {} Dec: {:?}", test_dis, decoded);
-    }
-
-    if reference_cpu != test_cpu {
-        println!("The simulators do not agree.");
-        println!("--- Reference Sim ---\n{}", reference_cpu);
-        println!("-------- Test Sim ---\n{}", test_cpu);
-    }
-
-    match reference_cpu.trap_cause() {
-        Some(TrapCause::Breakpoint) => {}
-        Some(cause) => println!("Reference CPU: {:?} at 0x{:08x}", cause, reference_cpu.pc()),
-        None => {}
+        if test_cpu.is_trapped() {
+            break;
+        }
     }
 
     match test_cpu.trap_cause() {
