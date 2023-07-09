@@ -1,6 +1,6 @@
 mod decoded;
 
-use std::{collections::HashMap, ops::Index};
+use std::collections::HashMap;
 
 use decoded::*;
 
@@ -81,28 +81,26 @@ where
     }
 }
 
-type DecodedBlock = Vec<Decoded>;
-type Addresses = Vec<Address>;
+pub struct Instruction {
+    pub decoded: Decoded, // The decoded instruction.
+    pub next_pc: Address, // The value of PC after the instruction assuming it doesn't branch.
+}
+
+type DecodedBlock = Vec<Instruction>;
 
 pub struct DecodingCompiler {
     block_map: HashMap<Address, DecodedBlock>,
-    addr_map: HashMap<Address, Addresses>,
 }
 
 impl DecodingCompiler {
     pub fn new() -> Self {
         Self {
             block_map: HashMap::new(),
-            addr_map: HashMap::new(),
         }
     }
 
     pub fn get(&self, addr: Address) -> Option<&DecodedBlock> {
         self.block_map.get(&addr)
-    }
-
-    pub fn get_addresses(&self, addr: Address) -> Option<&Addresses> {
-        self.addr_map.get(&addr)
     }
 
     pub fn compile(&mut self, image: &[u8]) {
@@ -121,10 +119,12 @@ impl DecodingCompiler {
         for block in blocks {
             let mut addr = block.start;
             let mut decoded_block = Vec::new();
-            let mut addresses = Vec::new();
             while addr < block.end {
+                // Decode the instruction.
                 let ins = read_instruction(image, addr).unwrap(); // TODO: Don't unwrap.
                 let decoded = decoder.dispatch(ins);
+
+                // Determine what next_pc should be.
                 let is_compact = (ins & 3) != 3;
                 if is_compact {
                     // Compact instructions are 2 bytes each.
@@ -133,11 +133,13 @@ impl DecodingCompiler {
                     // Regular instructions are 4 bytes each.
                     addr += 4;
                 }
-                addresses.push(addr);
-                decoded_block.push(decoded);
+                let result = Instruction {
+                    decoded,
+                    next_pc: addr,
+                };
+                decoded_block.push(result);
             }
             self.block_map.insert(block.start, decoded_block);
-            self.addr_map.insert(block.start, addresses);
         }
 
         // At this point we have a block map consisting of decoded blocks.
@@ -170,18 +172,18 @@ pub fn main() {
     let mut decoding_compiler = DecodingCompiler::new();
     decoding_compiler.compile(image);
 
-    // Run until we've run out of basic blocks.
+    // Run until we've run out of basic blocks or we're trapped.
     let mut addr = 0;
     while let Some(decoded_block) = decoding_compiler.get(addr) {
-        let addresses = decoding_compiler.get_addresses(addr).unwrap();
-        let mut i = 0;
         for decoded in decoded_block {
             // Here's what we *think* the next pc will be. It could be modified by a jump.
-            addr = *addresses.index(i);
-            test_cpu.set_next_pc(addr);
-            execute(&mut test_cpu, &decoded);
+            test_cpu.set_next_pc(decoded.next_pc);
+
+            // Execute the instruction itself.
+            execute(&mut test_cpu, &decoded.decoded);
+
+            // And update PC to reflect reality.
             addr = test_cpu.transfer();
-            i += 1;
         }
         if test_cpu.is_trapped() {
             break;
