@@ -1,6 +1,7 @@
 mod decoded;
 
 use std::collections::HashMap;
+use std::f32::consts::E;
 
 use decoded::*;
 
@@ -10,11 +11,19 @@ use arviss::{
 use load_dll::block_finder::BlockFinder;
 use load_dll::read_instruction::*;
 
-fn execute<T>(cpu: &mut T, ins: &Decoded)
+pub struct Instruction {
+    pub decoded: Decoded, // The decoded instruction.
+    pub next_pc: Address, // The value of PC after the instruction assuming it doesn't branch.
+}
+
+fn execute<T>(cpu: &mut T, ins: &Instruction) -> Address
 where
     T: Fetch + Trap + XRegisters + Memory,
 {
-    match ins {
+    // Here's what we *think* the next pc will be. It could be modified by a jump.
+    cpu.set_next_pc(ins.next_pc);
+
+    match &ins.decoded {
         Decoded::Illegal(c) => cpu.illegal(c.ins),
         Decoded::Branch(c) => match c.func {
             BranchFunc::Beq => cpu.beq(c.rs1, c.rs2, c.bimm),
@@ -79,11 +88,9 @@ where
         Decoded::Ebreak => cpu.ebreak(),
         Decoded::Nop => cpu.c_nop(0), // TODO: does this seem right?
     }
-}
 
-pub struct Instruction {
-    pub decoded: Decoded, // The decoded instruction.
-    pub next_pc: Address, // The value of PC after the instruction assuming it doesn't branch.
+    // Update PC to reflect reality.
+    cpu.transfer()
 }
 
 type DecodedBlock = Vec<Instruction>;
@@ -176,14 +183,7 @@ pub fn main() {
     let mut addr = 0;
     while let Some(decoded_block) = decoding_compiler.get(addr) {
         for decoded in decoded_block {
-            // Here's what we *think* the next pc will be. It could be modified by a jump.
-            test_cpu.set_next_pc(decoded.next_pc);
-
-            // Execute the instruction itself.
-            execute(&mut test_cpu, &decoded.decoded);
-
-            // And update PC to reflect reality.
-            addr = test_cpu.transfer();
+            addr = execute(&mut test_cpu, &decoded);
         }
         if test_cpu.is_trapped() {
             break;
